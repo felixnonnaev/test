@@ -1,0 +1,1345 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>HyperMessages</title>
+        <link
+            rel="icon"
+            type="image/svg+xml"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><style>path{fill:%23000}@media(prefers-color-scheme:dark){path{fill:%23fff}}</style><path d='M7 21v-5H4V4h16v12h-8z'/></svg>"
+        />
+        <style>
+            * {
+                box-sizing: border-box;
+                font-family: "Courier New", monospace;
+                color: var(--text-color);
+                -webkit-tap-highlight-color: transparent;
+                outline: none;
+                scrollbar-width: thin;
+                scrollbar-color: var(--accent-color) var(--bg-color);
+            }
+
+            :root {
+                --bg-color: #000;
+                --text-color: #fff;
+                --accent-color: #888;
+                --text-muted: #666;
+                color-scheme: dark;
+            }
+
+            body {
+                margin: 0;
+                background-color: var(--bg-color);
+                height: 100dvh;
+                overflow: hidden;
+
+                display: grid;
+                grid-template-rows: 1fr auto auto;
+                grid-template-columns: min-content 1fr;
+
+                grid-template-areas:
+                    "messages messages"
+                    "attachments attachments"
+                    "files-upload message-input";
+                touch-action: manipulation;
+            }
+
+            ::selection {
+                background-color: var(--accent-color);
+                color: var(--bg-color);
+            }
+
+            mark {
+                color: var(--bg-color);
+                background-color: var(--text-color);
+                border-radius: 0.1rem;
+            }
+
+            mark::selection {
+                color: var(--text-color);
+                background-color: var(--accent-color);
+            }
+
+            svg {
+                cursor: pointer;
+            }
+
+            @media (hover: hover) {
+                svg:hover > path {
+                    stroke: var(--text-color);
+                }
+            }
+
+            path {
+                stroke: var(--accent-color);
+                fill: transparent;
+            }
+
+            #messages {
+                grid-area: messages;
+                overflow-x: hidden;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column-reverse;
+                margin-left: 3.2rem;
+            }
+
+            #messages > div {
+                padding: 1rem 1rem 0rem 1rem;
+                overflow-wrap: anywhere;
+                position: relative;
+                border-radius: 0.5rem;
+            }
+
+            #messages > div > p {
+                margin: 0;
+                padding-top: 1.5rem;
+                white-space: pre-line;
+            }
+
+            #files-upload {
+                grid-area: files-upload;
+                width: 50px;
+                height: 50px;
+                align-self: end;
+                margin: 0.5rem;
+            }
+
+            #message-input {
+                grid-area: message-input;
+                border: none;
+                margin-top: 1.5rem;
+                border-top: 2px solid var(--accent-color);
+                resize: none;
+                outline: none;
+                background-color: var(--bg-color);
+                color: var(--text-muted);
+                padding: 1.5rem 1.5rem 1.5rem 0.5rem;
+                font-size: medium;
+                field-sizing: content;
+                height: 0;
+                min-height: 4.3rem;
+                max-height: 25rem;
+                overflow-y: auto;
+                overflow-x: hidden;
+            }
+
+            #message-input:focus {
+                color: var(--text-color);
+            }
+
+            .attachments {
+                display: flex;
+                overflow-y: hidden;
+                gap: 3rem;
+                padding-bottom: 1.5rem;
+            }
+
+            body > .attachments {
+                grid-area: attachments;
+                margin-left: 4rem;
+            }
+
+            .attachments > figure {
+                margin: 0;
+                margin-top: 1.5rem;
+                align-self: center;
+                position: relative;
+            }
+
+            .attachments > figure > svg {
+                display: none;
+                position: absolute;
+                width: 48px;
+                height: 48px;
+                border-radius: 6px;
+                padding: 6px;
+                top: 0.2rem;
+                right: 0.5rem;
+                background-color: rgba(0, 0, 0, 0.5);
+            }
+
+            body > .attachments > figure > svg:nth-of-type(2),
+            #messages .attachments > figure:hover > svg:nth-of-type(1) {
+                display: block;
+            }
+
+            img,
+            video {
+                -webkit-user-drag: none;
+                -webkit-user-select: none;
+                max-width: 18rem;
+                max-height: 15rem;
+                border-radius: 0.7rem;
+                cursor: pointer;
+            }
+
+            .attachments > figure > figcaption {
+                padding: 2rem 1rem;
+                display: grid;
+                height: 15rem;
+                width: 13rem;
+                overflow-wrap: anywhere;
+                place-items: center;
+                text-align: center;
+                border-right: 2px solid var(--accent-color);
+            }
+
+            dialog {
+                width: 100dvw;
+                height: 100dvh;
+                border: none;
+                padding: 0;
+                max-width: none;
+                max-height: none;
+                user-select: none;
+                background: rgba(0, 0, 0, 0.85);
+            }
+
+            .dialog-content {
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            #modal-image {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+                cursor: zoom-in;
+                transition: transform 0.2s ease-out;
+            }
+
+            #modal-close {
+                position: absolute;
+                top: 1.5rem;
+                right: 1.5rem;
+                width: 48px;
+                height: 48px;
+                background-color: rgba(0, 0, 0, 0.5);
+                border-radius: 6px;
+                padding: 6px;
+                z-index: 1;
+                cursor: pointer;
+                display: block;
+            }
+
+            /*
+
+            video::-webkit-media-controls-play-button,
+            video::-webkit-media-controls-current-time-display,
+            video::-webkit-media-controls-time-remaining-display,
+            video::-webkit-media-controls-timeline,
+            video::-webkit-media-controls-mute-button,
+            video::-webkit-media-controls-volume-slider,
+            video::-webkit-media-controls-fullscreen-button {
+                filter: invert(40%) sepia(40%) saturate(4500%)
+                    hue-rotate(210deg);
+                outline: none;
+            }
+
+            video::-webkit-media-controls-play-button:hover,
+            video::-webkit-media-controls-timeline:hover,
+            video::-webkit-media-controls-mute-button:hover,
+            video::-webkit-media-controls-volume-slider:hover,
+            video::-webkit-media-controls-fullscreen-button:hover {
+                filter: brightness(0) invert(1);
+            }
+
+            */
+        </style>
+    </head>
+    <body>
+        <div id="messages"></div>
+        <svg id="files-upload" viewBox="0 0 24 24">
+            <path d="M12 6v12M6 12h12" />
+        </svg>
+        <textarea id="message-input"></textarea>
+        <dialog id="modal">
+            <div class="dialog-content">
+                <svg id="modal-close" viewBox="0 0 24 24">
+                    <path d="M19 5 5 19M5 5l14 14" />
+                </svg>
+                <img id="modal-image" src="" alt="Preview" />
+            </div>
+        </dialog>
+        <script>
+            const messagesElement = document.getElementById("messages");
+            const filesUploadElement = document.getElementById("files-upload");
+            const messageInputElement =
+                document.getElementById("message-input");
+
+            const dialogElement = document.getElementById("modal");
+            const modalImage = document.getElementById("modal-image");
+            const modalClose = document.getElementById("modal-close");
+
+            let isZoomed;
+
+            function getChunkIV(baseIv, chunkIndex) {
+                const iv = new Uint8Array(baseIv);
+                const view = new DataView(iv.buffer);
+                view.setBigUint64(
+                    4,
+                    view.getBigUint64(4, true) + chunkIndex,
+                    true,
+                );
+                return iv;
+            }
+
+            function openModal(src) {
+                const rect = messageInputElement.getBoundingClientRect();
+                messageInputElement.style.height = `${rect.height}px`;
+
+                modalImage.src = src;
+                isZoomed = false;
+                modalImage.style.transform = "scale(1)";
+                modalImage.style.cursor = "zoom-in";
+                dialogElement.showModal();
+            }
+
+            dialogElement.onclose = () => {
+                isZoomed = false;
+                modalImage.style.transform = "scale(1)";
+                modalImage.src = "";
+                messageInputElement.style.height = "";
+            };
+
+            modalClose.onclick = () => dialogElement.close();
+
+            dialogElement.onclick = (e) => {
+                if (
+                    e.target === dialogElement ||
+                    e.target.classList.contains("dialog-content")
+                ) {
+                    dialogElement.close();
+                }
+            };
+
+            function updateTransformOrigin(e) {
+                const x = (e.clientX / window.innerWidth) * 100;
+                const y = (e.clientY / window.innerHeight) * 100;
+                modalImage.style.transformOrigin = `${x}% ${y}%`;
+            }
+
+            modalImage.onclick = (e) => {
+                isZoomed = !isZoomed;
+                if (isZoomed) {
+                    modalImage.style.cursor = "zoom-out";
+                    updateTransformOrigin(e);
+
+                    const scaleX =
+                        modalImage.naturalWidth / modalImage.clientWidth;
+                    const scaleY =
+                        modalImage.naturalHeight / modalImage.clientHeight;
+
+                    let targetScale = Math.max(scaleX, scaleY);
+
+                    targetScale = Math.max(targetScale, 2);
+
+                    modalImage.style.transform = `scale(${targetScale})`;
+                } else {
+                    modalImage.style.cursor = "zoom-in";
+                    modalImage.style.transform = "scale(1)";
+                }
+            };
+
+            dialogElement.onmousemove = (e) => {
+                if (isZoomed) {
+                    updateTransformOrigin(e);
+                }
+            };
+
+            const incomingMessages = new Map();
+
+            const textEncoder = new TextEncoder();
+
+            let webtransport, cryptoKey, database;
+
+            (async () => {
+                const password = prompt("Enter room password:") || "default";
+                cryptoKey = await crypto.subtle.deriveKey(
+                    {
+                        name: "PBKDF2",
+                        salt: textEncoder.encode(
+                            "628b460e-c34c-429d-a73a-ec69dda577cz",
+                        ),
+                        iterations: 250000,
+                        hash: "SHA-256",
+                    },
+                    await crypto.subtle.importKey(
+                        "raw",
+                        textEncoder.encode(password),
+                        "PBKDF2",
+                        false,
+                        ["deriveKey"],
+                    ),
+                    { name: "AES-GCM", length: 256 },
+                    false,
+                    ["encrypt", "decrypt"],
+                );
+
+                if (indexedDB.databases) {
+                    const databases = await indexedDB.databases();
+                    for (const database of databases) {
+                        if (
+                            database.name !==
+                            "628b460e-c34c-429d-a73a-ec69dda577cz"
+                        ) {
+                            indexedDB.deleteDatabase(database.name);
+                        }
+                    }
+                }
+
+                database = await new Promise((resolve) => {
+                    const databaseRequest = indexedDB.open(
+                        "628b460e-c34c-429d-a73a-ec69dda577cz",
+                    );
+                    databaseRequest.onupgradeneeded = (e) =>
+                        e.target.result.createObjectStore("fileHandlers", {
+                            keyPath: ["messageId", "attachmentIndex"],
+                        });
+                    databaseRequest.onsuccess = (e) => resolve(e.target.result);
+                });
+
+                webtransport = new WebTransport(
+                    `https://92.255.196.108:5001/628b460e-c34c-429d-a73a-ec69dda577cz`,
+                    {
+                        serverCertificateHashes: [
+                            {
+                                algorithm: "sha-256",
+                                value: new Uint8Array([
+                                    13, 66, 34, 213, 139, 87, 126, 249, 54, 109,
+                                    33, 23, 1, 48, 152, 180, 209, 148, 248, 69,
+                                    157, 114, 32, 73, 250, 34, 126, 97, 28, 155,
+                                    32, 86,
+                                ]),
+                            },
+                        ],
+                    },
+                );
+                await webtransport.ready;
+                readIncomingUnidirectionalStreams();
+                readIncomingBidirectionalStreams();
+
+                messageInputElement.focus();
+            })();
+
+            function createSvgElement(pathData) {
+                const svgElement = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "svg",
+                );
+                svgElement.setAttribute("viewBox", "0 0 24 24");
+                const path = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "path",
+                );
+                path.setAttribute("d", pathData);
+                svgElement.appendChild(path);
+                return svgElement;
+            }
+
+            function prependMessageElement(text, attachmentsToAppend) {
+                const messageElement = document.createElement("div");
+
+                if (text) {
+                    const textElement = document.createElement("p");
+
+                    textElement.innerHTML = parseMarkdown(text);
+
+                    messageElement.append(textElement);
+                }
+
+                if (attachmentsToAppend.length) {
+                    const attachmentsDom =
+                        createAttachmentsElement(attachmentsToAppend);
+                    messageElement.append(attachmentsDom);
+                }
+
+                messagesElement.prepend(messageElement);
+            }
+
+            filesUploadElement.onclick = async () => {
+                if ("showOpenFilePicker" in window) {
+                    try {
+                        const handles = await window.showOpenFilePicker({
+                            multiple: true,
+                        });
+                        const newFiles = [];
+                        for (const handle of handles) {
+                            const file = await handle.getFile();
+                            file.handle = handle;
+                            newFiles.push(file);
+                        }
+                        uploadAttachments(newFiles);
+                    } catch {}
+                } else {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.multiple = true;
+                    input.onchange = (e) => {
+                        const files = Array.from(e.target.files);
+                        uploadAttachments(files);
+                    };
+                    input.click();
+                }
+            };
+
+            document.body.ondragover = (e) => e.preventDefault();
+            document.body.ondrop = async (event) => {
+                event.preventDefault();
+                const promises = [];
+
+                for (const item of event.dataTransfer.items) {
+                    if (item.kind === "file") {
+                        const file = item.getAsFile();
+                        if (!file) continue;
+
+                        promises.push(
+                            (async () => {
+                                if ("getAsFileSystemHandle" in item) {
+                                    try {
+                                        file.handle =
+                                            await item.getAsFileSystemHandle();
+                                    } catch {}
+                                }
+                                return file;
+                            })(),
+                        );
+                    }
+                }
+
+                const newFiles = await Promise.all(promises);
+                if (newFiles.length) uploadAttachments(newFiles);
+            };
+
+            let uploadQueue = [];
+
+            function uploadAttachments(newFiles) {
+                if (newFiles.length === 0) return;
+                for (const file of newFiles) {
+                    file.objectUrl = URL.createObjectURL(file);
+                    uploadQueue.push(file);
+                }
+
+                let previewContainer = messagesElement.nextElementSibling;
+                if (previewContainer?.className !== "attachments") {
+                    previewContainer = document.createElement("div");
+                    previewContainer.classList.add("attachments");
+                    messagesElement.insertAdjacentElement(
+                        "afterend",
+                        previewContainer,
+                    );
+                }
+
+                const newElements = createAttachmentsElement(
+                    newFiles,
+                    handleDeleteFromQueue,
+                );
+                while (newElements.firstChild) {
+                    previewContainer.appendChild(newElements.firstChild);
+                }
+                messageInputElement.focus();
+            }
+
+            function createAttachmentsElement(files, onDeleteCallback = null) {
+                const attachmentsElement = document.createElement("div");
+                attachmentsElement.classList.add("attachments");
+
+                for (const file of files) {
+                    const figureElement = document.createElement("figure");
+                    const url =
+                        file.objectUrl ||
+                        (file.isLarge ? null : URL.createObjectURL(file));
+
+                    const downloadElement = createSvgElement(
+                        "M20 15v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3m4-4 4 4m0 0 4-4m-4 4V3",
+                    );
+                    downloadElement.dataset.filename = file.name;
+
+                    if (file.isLarge) {
+                        downloadElement.onclick = () =>
+                            requestLargeFile(
+                                file.messageId,
+                                file.attachmentIndex,
+                                file.name,
+                            );
+                    } else {
+                        downloadElement.dataset.downloadUrl = url;
+                        downloadElement.onclick = downloadAttachment;
+                    }
+
+                    figureElement.append(downloadElement);
+
+                    if (onDeleteCallback) {
+                        const deleteElement = createSvgElement(
+                            "M19 5 5 19M5 5l14 14",
+                        );
+                        deleteElement.onclick = () =>
+                            onDeleteCallback(file, figureElement);
+                        figureElement.append(deleteElement);
+                    }
+
+                    let previewElement;
+                    if (file.size > 524288000 || file.isLarge) {
+                        previewElement = document.createElement("figcaption");
+                        previewElement.textContent =
+                            file.name + " (Large File)";
+                    } else if (
+                        file.type.startsWith("image/") &&
+                        !file.type.endsWith("svg+xml")
+                    ) {
+                        previewElement = document.createElement("img");
+                        previewElement.src = url;
+                        previewElement.onclick = () => openModal(url);
+                    } else if (
+                        (file.type && file.type.startsWith("video/")) ||
+                        file.name.endsWith(".mov")
+                    ) {
+                        previewElement = document.createElement("video");
+                        previewElement.controls = true;
+                        previewElement.setAttribute(
+                            "controlsList",
+                            "nodownload",
+                        );
+                        previewElement.src = url;
+                    } else {
+                        previewElement = document.createElement("figcaption");
+                        previewElement.textContent = file.name;
+                    }
+
+                    figureElement.append(previewElement);
+                    attachmentsElement.append(figureElement);
+                }
+
+                return attachmentsElement;
+            }
+
+            function handleDeleteFromQueue(file, figureElement) {
+                if (file.objectUrl) URL.revokeObjectURL(file.objectUrl);
+                const index = uploadQueue.indexOf(file);
+                if (index !== -1) uploadQueue.splice(index, 1);
+                const parentContainer = figureElement.parentElement;
+                figureElement.remove();
+                if (parentContainer && parentContainer.children.length === 0)
+                    parentContainer.remove();
+            }
+
+            function downloadAttachment(event) {
+                const button = event.currentTarget;
+                const link = document.createElement("a");
+                link.download = button.dataset.filename;
+                link.href = button.dataset.downloadUrl;
+                link.click();
+            }
+
+            messageInputElement.onpaste = async (event) => {
+                if (!event.clipboardData || !event.clipboardData.items) return;
+                const promises = [];
+
+                for (const item of event.clipboardData.items) {
+                    if (item.kind === "file") {
+                        const file = item.getAsFile();
+                        if (!file) continue;
+
+                        promises.push(
+                            (async () => {
+                                if ("getAsFileSystemHandle" in item) {
+                                    try {
+                                        file.handle =
+                                            await item.getAsFileSystemHandle();
+                                    } catch {}
+                                }
+                                return file;
+                            })(),
+                        );
+                    }
+                }
+
+                const newFiles = await Promise.all(promises);
+                if (newFiles.length > 0) uploadAttachments(newFiles);
+            };
+
+            document.onpaste = () => messageInputElement.focus();
+
+            function escapeHtml(text) {
+                return String(text)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+            }
+
+            const headerRegex = /^(#{1,6})[ \t]+([^\n]+)$/gm;
+
+            const inlineRegex =
+                /(https?:\/\/[^\s]+)|\*\*([^*]+)\*\*|~~([^~]+)~~|\*([^*]+)\*/g;
+
+            function parseMarkdown(input) {
+                if (!input) return "";
+
+                const safeInput = escapeHtml(input);
+
+                let html = safeInput.replace(headerRegex, (_, hashes, text) => {
+                    const level = hashes.length;
+                    return `<h${level}>${text}</h${level}>`;
+                });
+
+                return html.replace(
+                    inlineRegex,
+                    (match, url, bold, del, em) => {
+                        if (url) {
+                            const tailRegex =
+                                /([.,!?;:]|&quot;|&lt;|&gt;|&#39;)+$/;
+
+                            let cleanUrl = url;
+                            let trailing = "";
+
+                            const tailMatch = cleanUrl.match(tailRegex);
+                            if (tailMatch) {
+                                trailing = tailMatch[0];
+                                cleanUrl = cleanUrl.slice(0, -trailing.length);
+                            }
+
+                            return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailing}`;
+                        }
+
+                        if (bold) return `<strong>${bold}</strong>`;
+                        if (del) return `<del>${del}</del>`;
+                        if (em) return `<em>${em}</em>`;
+
+                        return match;
+                    },
+                );
+            }
+
+            document.onkeydown = (event) => {
+                if (!event.ctrlKey) messageInputElement.focus();
+            };
+
+            messageInputElement.onkeydown = async (event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    const inputText = messageInputElement.value.trim();
+
+                    if (inputText || uploadQueue.length) {
+                        const messageId = crypto.getRandomValues(
+                            new BigUint64Array(1),
+                        )[0];
+                        prependMessageElement(inputText, uploadQueue);
+
+                        let textStream = null;
+                        if (inputText) {
+                            textStream = new Blob([inputText])
+                                .stream()
+                                .pipeThrough(
+                                    new CompressionStream("deflate-raw"),
+                                );
+                        }
+
+                        writeUnidirectionalStream(
+                            { messageId, attachmentsCount: uploadQueue.length },
+                            textStream,
+                        );
+
+                        for (let i = 0; i < uploadQueue.length; i++) {
+                            const file = uploadQueue[i];
+                            const meta = {
+                                messageId,
+                                attachmentsCount: uploadQueue.length,
+                                attachmentIndex: i,
+                                fileName: file.name,
+                                fileType: file.type,
+                            };
+
+                            if (file.size > 524288000) {
+                                if (file.handle) {
+                                    database
+                                        .transaction(
+                                            "fileHandlers",
+                                            "readwrite",
+                                        )
+                                        .objectStore("fileHandlers")
+                                        .put({
+                                            messageId: messageId.toString(),
+                                            attachmentIndex: i,
+                                            handle: file.handle,
+                                        });
+                                }
+                                writeUnidirectionalStream(meta, null);
+                            } else {
+                                writeUnidirectionalStream(meta, file.stream());
+                            }
+                        }
+
+                        const previewContainer =
+                            messagesElement.nextElementSibling;
+                        if (previewContainer?.className === "attachments")
+                            previewContainer.remove();
+
+                        messageInputElement.value = "";
+                        uploadQueue = [];
+                    }
+                }
+            };
+
+            async function writeUnidirectionalStream(meta, dataStream) {
+                const stream = await webtransport.createUnidirectionalStream();
+                const writer = stream.getWriter();
+
+                const baseIv = crypto.getRandomValues(new Uint8Array(12));
+                const encoder = new TextEncoder();
+
+                let nameBytes = new Uint8Array(0);
+                let typeBytes = new Uint8Array(0);
+                let metaSize = 9;
+
+                if (meta.fileName !== undefined) {
+                    nameBytes = encoder.encode(meta.fileName);
+                    typeBytes = encoder.encode(meta.fileType);
+                    metaSize +=
+                        1 + 2 + nameBytes.byteLength + 2 + typeBytes.byteLength;
+                }
+
+                const metaBuffer = new ArrayBuffer(metaSize);
+                const metaView = new DataView(metaBuffer);
+                const metaBytes = new Uint8Array(metaBuffer);
+
+                metaView.setBigUint64(0, meta.messageId, true);
+                metaView.setUint8(8, meta.attachmentsCount);
+
+                if (meta.fileName !== undefined) {
+                    metaView.setUint8(9, meta.attachmentIndex);
+                    metaView.setUint16(10, nameBytes.byteLength, true);
+                    metaBytes.set(nameBytes, 12);
+                    metaView.setUint16(
+                        12 + nameBytes.byteLength,
+                        typeBytes.byteLength,
+                        true,
+                    );
+                    metaBytes.set(typeBytes, 14 + nameBytes.byteLength);
+                }
+
+                const encMeta = await crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv: baseIv },
+                    cryptoKey,
+                    metaBytes,
+                );
+                const ivAndLen = new Uint8Array(14);
+                ivAndLen.set(baseIv, 0);
+                new DataView(ivAndLen.buffer).setUint16(
+                    12,
+                    encMeta.byteLength,
+                    true,
+                );
+
+                await writer.write(ivAndLen);
+                await writer.write(new Uint8Array(encMeta));
+
+                if (dataStream) {
+                    let chunkIndex = 0n;
+                    const CHUNK_SIZE = 1048576;
+
+                    const reader = dataStream.getReader();
+                    const buffer = new Uint8Array(CHUNK_SIZE);
+                    let bufferOffset = 0;
+                    let hasWritten = false;
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) {
+                            if (bufferOffset > 0 || !hasWritten) {
+                                const chunkIv = getChunkIV(baseIv, chunkIndex);
+                                const encChunk = await crypto.subtle.encrypt(
+                                    { name: "AES-GCM", iv: chunkIv },
+                                    cryptoKey,
+                                    buffer.subarray(0, bufferOffset),
+                                );
+                                await writer.write(new Uint8Array(encChunk));
+                            }
+                            break;
+                        }
+
+                        let valueOffset = 0;
+                        while (valueOffset < value.byteLength) {
+                            const spaceLeft = CHUNK_SIZE - bufferOffset;
+                            const copyLen = Math.min(
+                                spaceLeft,
+                                value.byteLength - valueOffset,
+                            );
+                            buffer.set(
+                                value.subarray(
+                                    valueOffset,
+                                    valueOffset + copyLen,
+                                ),
+                                bufferOffset,
+                            );
+                            bufferOffset += copyLen;
+                            valueOffset += copyLen;
+
+                            if (bufferOffset === CHUNK_SIZE) {
+                                const chunkIv = getChunkIV(baseIv, chunkIndex);
+                                const encChunk = await crypto.subtle.encrypt(
+                                    { name: "AES-GCM", iv: chunkIv },
+                                    cryptoKey,
+                                    buffer,
+                                );
+                                await writer.write(new Uint8Array(encChunk));
+                                chunkIndex++;
+                                bufferOffset = 0;
+                                hasWritten = true;
+                            }
+                        }
+                    }
+                }
+                await writer.close();
+            }
+
+            async function readIncomingUnidirectionalStreams() {
+                const reader =
+                    webtransport.incomingUnidirectionalStreams.getReader();
+                try {
+                    while (true) {
+                        const { done, value: stream } = await reader.read();
+                        if (done) break;
+
+                        handleIncomingUniStream(stream);
+                    }
+                } catch {}
+            }
+
+            async function handleIncomingUniStream(stream) {
+                const reader = stream.getReader();
+                let leftover = new Uint8Array(0);
+
+                async function readExact(length) {
+                    const buffer = new Uint8Array(length);
+                    let bytesRead = 0;
+                    if (leftover.byteLength > 0) {
+                        const copyLen = Math.min(leftover.byteLength, length);
+                        buffer.set(leftover.subarray(0, copyLen), 0);
+                        bytesRead += copyLen;
+                        leftover = leftover.subarray(copyLen);
+                    }
+                    while (bytesRead < length) {
+                        const { value, done } = await reader.read();
+                        if (done)
+                            return bytesRead === 0
+                                ? null
+                                : buffer.subarray(0, bytesRead);
+
+                        const spaceLeft = length - bytesRead;
+                        if (value.byteLength <= spaceLeft) {
+                            buffer.set(value, bytesRead);
+                            bytesRead += value.byteLength;
+                        } else {
+                            buffer.set(value.subarray(0, spaceLeft), bytesRead);
+                            bytesRead += spaceLeft;
+                            leftover = value.subarray(spaceLeft);
+                        }
+                    }
+                    return buffer;
+                }
+
+                const headerRead = await readExact(14);
+                if (!headerRead) return;
+
+                const baseIv = headerRead.subarray(0, 12);
+                const metaLen = new DataView(headerRead.buffer).getUint16(
+                    12,
+                    true,
+                );
+
+                const encMeta = await readExact(metaLen);
+                let decMetaBuffer;
+                try {
+                    decMetaBuffer = await crypto.subtle.decrypt(
+                        { name: "AES-GCM", iv: baseIv },
+                        cryptoKey,
+                        encMeta,
+                    );
+                } catch {
+                    return;
+                }
+
+                const metaView = new DataView(decMetaBuffer);
+                const metaBytes = new Uint8Array(decMetaBuffer);
+                const decoder = new TextDecoder();
+
+                const meta = {
+                    messageId: metaView.getBigUint64(0, true),
+                    attachmentsCount: metaView.getUint8(8),
+                };
+
+                if (meta.attachmentsCount > 0 && decMetaBuffer.byteLength > 9) {
+                    meta.attachmentIndex = metaView.getUint8(9);
+                    const nameLen = metaView.getUint16(10, true);
+                    meta.fileName = decoder.decode(
+                        metaBytes.subarray(12, 12 + nameLen),
+                    );
+                    const typeLen = metaView.getUint16(12 + nameLen, true);
+                    meta.fileType = decoder.decode(
+                        metaBytes.subarray(
+                            14 + nameLen,
+                            14 + nameLen + typeLen,
+                        ),
+                    );
+                }
+
+                let chunkIndex = 0n;
+                const decryptedChunks = [];
+                const CHUNK_SIZE = 1048592;
+
+                while (true) {
+                    const encChunk = await readExact(CHUNK_SIZE);
+                    if (!encChunk) break;
+                    try {
+                        const decChunkBuffer = await crypto.subtle.decrypt(
+                            {
+                                name: "AES-GCM",
+                                iv: getChunkIV(baseIv, chunkIndex),
+                            },
+                            cryptoKey,
+                            encChunk,
+                        );
+                        decryptedChunks.push(decChunkBuffer);
+                    } catch {
+                        break;
+                    }
+                    if (encChunk.byteLength < CHUNK_SIZE) break;
+                    chunkIndex++;
+                }
+
+                if (!incomingMessages.has(meta.messageId)) {
+                    incomingMessages.set(meta.messageId, {
+                        textReceived: false,
+                        text: "",
+                        attachments: [],
+                        expected: meta.attachmentsCount,
+                    });
+                }
+                const message = incomingMessages.get(meta.messageId);
+
+                if (meta.fileName === undefined) {
+                    const blob = new Blob(decryptedChunks);
+                    let text = "";
+                    if (blob.size > 0) {
+                        const decompressedStream = blob
+                            .stream()
+                            .pipeThrough(
+                                new DecompressionStream("deflate-raw"),
+                            );
+                        text = await new Response(decompressedStream).text();
+                    }
+                    message.text = text;
+                    message.textReceived = true;
+                } else {
+                    if (decryptedChunks.length === 0) {
+                        message.attachments.push({
+                            name: meta.fileName,
+                            isLarge: true,
+                            messageId: meta.messageId,
+                            attachmentIndex: meta.attachmentIndex,
+                        });
+                    } else {
+                        const finalFile = new File(
+                            decryptedChunks,
+                            meta.fileName,
+                            {
+                                type:
+                                    meta.fileType || "application/octet-stream",
+                            },
+                        );
+                        finalFile.attachmentIndex = meta.attachmentIndex;
+                        finalFile.objectUrl = URL.createObjectURL(finalFile);
+                        message.attachments.push(finalFile);
+                    }
+                }
+
+                if (
+                    message.textReceived &&
+                    message.attachments.length === message.expected
+                ) {
+                    message.attachments.sort(
+                        (a, b) => a.attachmentIndex - b.attachmentIndex,
+                    );
+                    prependMessageElement(message.text, message.attachments);
+                    incomingMessages.delete(meta.messageId);
+                }
+            }
+
+            async function requestLargeFile(
+                messageId,
+                attachmentIndex,
+                fileName,
+            ) {
+                try {
+                    if ("showSaveFilePicker" in window) {
+                        const fileHandle = await window.showSaveFilePicker({
+                            suggestedName: fileName,
+                        });
+                        await sendAndReadBidirectionalStream(
+                            messageId,
+                            attachmentIndex,
+                            fileHandle,
+                            fileName,
+                        );
+                    } else {
+                        await sendAndReadBidirectionalStream(
+                            messageId,
+                            attachmentIndex,
+                            null,
+                            fileName,
+                        );
+                    }
+                } catch {}
+            }
+
+            async function readIncomingBidirectionalStreams() {
+                const reader =
+                    webtransport.incomingBidirectionalStreams.getReader();
+                try {
+                    while (true) {
+                        const { done, value: stream } = await reader.read();
+                        if (done) break;
+
+                        handleIncomingBidiStream(stream);
+                    }
+                } catch {}
+            }
+
+            async function sendAndReadBidirectionalStream(
+                messageId,
+                attachmentIndex,
+                fileHandle,
+                fileName,
+            ) {
+                const stream = await webtransport.createBidirectionalStream();
+
+                const reqBuf = new ArrayBuffer(9);
+                const reqView = new DataView(reqBuf);
+                reqView.setBigUint64(0, messageId, true);
+                reqView.setUint8(8, attachmentIndex);
+
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const encReq = await crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv },
+                    cryptoKey,
+                    reqBuf,
+                );
+
+                const writer = stream.writable.getWriter();
+                const ivAndLen = new Uint8Array(14);
+                ivAndLen.set(iv, 0);
+                new DataView(ivAndLen.buffer).setUint16(
+                    12,
+                    encReq.byteLength,
+                    true,
+                );
+
+                await writer.write(ivAndLen);
+                await writer.write(new Uint8Array(encReq));
+                await writer.close();
+
+                let fileWriter = null;
+                let memoryChunks = [];
+
+                if (fileHandle) {
+                    fileWriter = await fileHandle.createWritable();
+                }
+
+                const reader = stream.readable.getReader();
+                let leftover = new Uint8Array(0);
+
+                async function readExact(length) {
+                    const buffer = new Uint8Array(length);
+                    let bytesRead = 0;
+                    if (leftover.byteLength > 0) {
+                        const copyLen = Math.min(leftover.byteLength, length);
+                        buffer.set(leftover.subarray(0, copyLen), 0);
+                        bytesRead += copyLen;
+                        leftover = leftover.subarray(copyLen);
+                    }
+                    while (bytesRead < length) {
+                        const { value, done } = await reader.read();
+                        if (done)
+                            return bytesRead === 0
+                                ? null
+                                : buffer.subarray(0, bytesRead);
+                        const spaceLeft = length - bytesRead;
+                        if (value.byteLength <= spaceLeft) {
+                            buffer.set(value, bytesRead);
+                            bytesRead += value.byteLength;
+                        } else {
+                            buffer.set(value.subarray(0, spaceLeft), bytesRead);
+                            bytesRead += spaceLeft;
+                            leftover = value.subarray(spaceLeft);
+                        }
+                    }
+                    return buffer;
+                }
+
+                const baseIvBuffer = await readExact(12);
+                if (!baseIvBuffer) {
+                    if (fileWriter) await fileWriter.close();
+                    return;
+                }
+
+                let chunkIndex = 0n;
+                const CHUNK_SIZE = 1048592;
+
+                while (true) {
+                    const encChunk = await readExact(CHUNK_SIZE);
+                    if (!encChunk) break;
+                    try {
+                        const decChunkBuffer = await crypto.subtle.decrypt(
+                            {
+                                name: "AES-GCM",
+                                iv: getChunkIV(baseIvBuffer, chunkIndex),
+                            },
+                            cryptoKey,
+                            encChunk,
+                        );
+
+                        if (fileWriter) {
+                            await fileWriter.write(
+                                new Uint8Array(decChunkBuffer),
+                            );
+                        } else {
+                            memoryChunks.push(new Uint8Array(decChunkBuffer));
+                        }
+                    } catch {
+                        break;
+                    }
+                    if (encChunk.byteLength < CHUNK_SIZE) break;
+                    chunkIndex++;
+                }
+
+                if (fileWriter) {
+                    await fileWriter.close();
+                } else if (memoryChunks.length > 0) {
+                    const blob = new Blob(memoryChunks);
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = fileName || "downloaded_file";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }
+            }
+
+            async function handleIncomingBidiStream(stream) {
+                try {
+                    const reader = stream.readable.getReader();
+                    let leftover = new Uint8Array(0);
+
+                    async function readExact(length) {
+                        const buffer = new Uint8Array(length);
+                        let bytesRead = 0;
+                        if (leftover.byteLength > 0) {
+                            const copyLen = Math.min(
+                                leftover.byteLength,
+                                length,
+                            );
+                            buffer.set(leftover.subarray(0, copyLen), 0);
+                            bytesRead += copyLen;
+                            leftover = leftover.subarray(copyLen);
+                        }
+                        while (bytesRead < length) {
+                            const { value, done } = await reader.read();
+                            if (done)
+                                return bytesRead === 0
+                                    ? null
+                                    : buffer.subarray(0, bytesRead);
+                            const spaceLeft = length - bytesRead;
+                            if (value.byteLength <= spaceLeft) {
+                                buffer.set(value, bytesRead);
+                                bytesRead += value.byteLength;
+                            } else {
+                                buffer.set(
+                                    value.subarray(0, spaceLeft),
+                                    bytesRead,
+                                );
+                                bytesRead += spaceLeft;
+                                leftover = value.subarray(spaceLeft);
+                            }
+                        }
+                        return buffer;
+                    }
+
+                    const header = await readExact(14);
+                    if (!header) return;
+
+                    const iv = header.subarray(0, 12);
+                    const len = new DataView(header.buffer).getUint16(12, true);
+                    const encReq = await readExact(len);
+                    if (!encReq) return;
+
+                    let reqBuf;
+                    try {
+                        reqBuf = await crypto.subtle.decrypt(
+                            { name: "AES-GCM", iv },
+                            cryptoKey,
+                            encReq,
+                        );
+                    } catch {
+                        return await stream.writable.close();
+                    }
+
+                    const reqView = new DataView(reqBuf);
+                    const messageId = reqView.getBigUint64(0, true);
+                    const attachmentIndex = reqView.getUint8(8);
+
+                    const request = database
+                        .transaction("fileHandlers")
+                        .objectStore("fileHandlers")
+                        .get([messageId.toString(), attachmentIndex]);
+
+                    request.onsuccess = async () => {
+                        const record = request.result;
+                        if (record && record.handle) {
+                            const file = await record.handle.getFile();
+                            const writer = stream.writable.getWriter();
+                            const baseIv = crypto.getRandomValues(
+                                new Uint8Array(12),
+                            );
+
+                            await writer.write(baseIv);
+
+                            let chunkIndex = 0n;
+                            const CHUNK_SIZE = 1048576;
+                            let offset = 0;
+
+                            while (offset < file.size) {
+                                const slice = file.slice(
+                                    offset,
+                                    offset + CHUNK_SIZE,
+                                );
+                                const chunkBuffer = await slice.arrayBuffer();
+
+                                const encChunk = await crypto.subtle.encrypt(
+                                    {
+                                        name: "AES-GCM",
+                                        iv: getChunkIV(baseIv, chunkIndex),
+                                    },
+                                    cryptoKey,
+                                    new Uint8Array(chunkBuffer),
+                                );
+
+                                await writer.write(new Uint8Array(encChunk));
+                                offset += CHUNK_SIZE;
+                                chunkIndex++;
+                            }
+                            await writer.close();
+                        } else {
+                            await stream.writable.close();
+                        }
+                    };
+                } catch {}
+            }
+        </script>
+    </body>
+</html>

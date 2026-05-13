@@ -1,0 +1,2193 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>HyperStreams</title>
+        <link
+            rel="icon"
+            type="image/svg+xml"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><style>path{fill:%23000}@media(prefers-color-scheme:dark){path{fill:%23fff}}</style><path d='M6 4v16l14-8z'/></svg>"
+        />
+        <style>
+            * {
+                font-family: "Courier New", monospace;
+                color: var(--text-color);
+                -webkit-tap-highlight-color: transparent;
+                outline: none;
+                scrollbar-width: thin;
+                scrollbar-color: var(--accent-color) var(--bg-color);
+            }
+
+            :root {
+                --bg-color: #000;
+                --text-color: #fff;
+                --accent-color: #888;
+                color-scheme: dark;
+            }
+
+            body {
+                background-color: var(--bg-color);
+                display: flex;
+                flex-wrap: wrap;
+                align-items: flex-start;
+                overflow-y: auto;
+                gap: 1rem;
+                padding-top: 3rem;
+                touch-action: manipulation;
+            }
+
+            input[type="range"] {
+                accent-color: var(--accent-color);
+                cursor: pointer;
+            }
+
+            input[type="range"]::-moz-range-thumb {
+                height: 0;
+                background: black;
+            }
+
+            .stream-wrapper {
+                position: relative;
+                flex: 1 1 40%;
+                min-width: 320px;
+                max-height: 85dvh;
+                aspect-ratio: 16 / 9;
+                background: var(--bg-color);
+            }
+
+            .stream-wrapper video {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                display: block;
+            }
+
+            .top-panel {
+                position: absolute;
+                top: 0.7rem;
+                display: flex;
+                gap: 0.5rem;
+            }
+
+            button {
+                background: var(--bg-color);
+                border: none;
+                border-bottom: 2px solid var(--accent-color);
+                padding: 0.5rem;
+                cursor: pointer;
+            }
+
+            button.is-active {
+                background: var(--accent-color);
+                color: var(--text-color);
+            }
+
+            svg {
+                min-width: 2rem;
+                height: 2rem;
+                border-left: 2px solid var(--accent-color);
+                padding-left: 0.5rem;
+                cursor: pointer;
+            }
+
+            svg.is-active > path {
+                stroke: var(--text-color);
+            }
+
+            @media (hover: hover) {
+                svg:hover > path {
+                    stroke: var(--text-color);
+                }
+                button:hover {
+                    color: var(--text-color);
+                    background-color: var(--accent-color);
+                }
+                input[type="range"]:hover {
+                    accent-color: var(--text-color);
+                }
+            }
+
+            path {
+                stroke: var(--accent-color);
+                fill: transparent;
+            }
+
+            dialog {
+                border: none;
+                padding: 0;
+                width: 100dvw;
+                max-width: 100dvw;
+                height: 100dvh;
+                max-height: 100dvh;
+                background: rgba(0, 0, 0, 0.85);
+                user-select: none;
+                z-index: 1;
+            }
+
+            dialog[open] {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .dialog-content {
+                border: 2px solid var(--accent-color);
+                background: var(--bg-color);
+                padding: 6rem 3rem 5rem 3rem;
+                position: relative;
+                max-height: 100dvh;
+                overflow-y: auto;
+                box-sizing: border-box;
+            }
+
+            .toggle-label {
+                display: flex;
+                align-items: center;
+                gap: 0.7rem;
+                cursor: pointer;
+                user-select: none;
+                margin-bottom: 2rem;
+            }
+
+            #selectSourceButton {
+                top: 0.7rem;
+                left: 0.7rem;
+                right: 0.7rem;
+                position: absolute;
+            }
+
+            .buttons {
+                margin-bottom: 2rem;
+            }
+
+            .buttons button {
+                padding: 0.5rem 1rem;
+            }
+
+            #bitrateSlider {
+                width: 80%;
+                position: absolute;
+                left: 2.5rem;
+                outline: 0.4rem solid var(--bg-color);
+                outline-offset: -0.35rem;
+            }
+
+            input[type="checkbox"] {
+                appearance: none;
+                width: 1.1rem;
+                height: 1.1rem;
+                border: 2px solid var(--accent-color);
+            }
+
+            input[type="checkbox"]:checked {
+                background-color: var(--accent-color);
+            }
+
+            video::-webkit-media-controls-current-time-display,
+            video:not(
+                    .has-audio
+                )::-webkit-media-controls-volume-control-container {
+                display: none;
+            }
+
+            /*
+
+            video::-webkit-media-controls-play-button,
+            video::-webkit-media-controls-mute-button,
+            video::-webkit-media-controls-volume-slider,
+            video::-webkit-media-controls-fullscreen-button {
+                filter: invert(40%) sepia(40%) saturate(4500%)
+                    hue-rotate(210deg) brightness(100%) contrast(100%);
+            }
+
+            video::-webkit-media-controls-play-button:hover,
+            video::-webkit-media-controls-mute-button:hover,
+            video::-webkit-media-controls-volume-slider:hover,
+            video::-webkit-media-controls-fullscreen-button:hover {
+                filter: brightness(0) invert(1);
+            }
+
+            */
+        </style>
+    </head>
+    <body>
+        <div class="top-panel">
+            <button id="streamToggle" onclick="toggleStream()">
+                Start Stream
+            </button>
+            <svg
+                id="microphoneToggle"
+                onclick="toggleMicrophone()"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    d="M18 12a6 6 0 0 1-6 6m0 0a6 6 0 0 1-6-6m6 6v3m0 0h3m-3 0H9m6-15v6a3 3 0 1 1-6 0V6a3 3 0 1 1 6 0"
+                />
+            </svg>
+            <svg id="cameraToggle" onclick="toggleCamera()" viewBox="0 0 24 24">
+                <path
+                    d="m16 9 5-2v10l-5-2M4 5.5h11a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1"
+                />
+            </svg>
+        </div>
+
+        <dialog id="modal">
+            <div class="dialog-content">
+                <button id="selectSourceButton" onclick="startMediaStream()">
+                    Select Source
+                </button>
+
+                <label class="toggle-label" id="rearCameraWrap">
+                    <input type="checkbox" id="rearCameraToggle" />
+                    Rear Camera
+                </label>
+
+                <label class="toggle-label" id="softwareEncodingWrap">
+                    <input type="checkbox" id="softwareEncodingToggle" />
+                    Software Encoding
+                </label>
+
+                <p>Codec</p>
+                <div id="codecContainer" class="buttons"></div>
+
+                <p>Resolution</p>
+                <div id="resolutionContainer" class="buttons"></div>
+
+                <p>Framerate</p>
+                <div id="framerateContainer" class="buttons"></div>
+
+                <p>Bitrate: <output id="bitrateValue">10</output> (Mbit/s)</p>
+                <input
+                    type="range"
+                    id="bitrateSlider"
+                    min="1"
+                    max="40"
+                    value="10"
+                />
+            </div>
+        </dialog>
+
+        <script>
+            function createWorker(code) {
+                const blob = new Blob([code], { type: "text/javascript" });
+                const objectUrl = URL.createObjectURL(blob);
+                return new Worker(objectUrl);
+            }
+
+            const writerWorkerCode = `
+              const PACKET_TYPE = { SCREEN_VIDEO: 0, SCREEN_AUDIO: 1, MICROPHONE: 2, WEBCAM_VIDEO: 3, REQ_KEY: 255 };
+
+              let cryptoKey = null, myStreamId = 0n, maxDatagramSize = 1200;
+              let sharedIvBuffer = new ArrayBuffer(12), sharedIvView = new DataView(sharedIvBuffer), ivCounterLow = 0n;
+
+              function getNextIV() {
+                sharedIvView.setBigUint64(4, ivCounterLow++, true);
+                return new Uint8Array(sharedIvBuffer.slice(0));
+              }
+
+              const workerStates = {
+               [PACKET_TYPE.SCREEN_VIDEO]: { active: false, encoder: null, frameCtr: 0, nextKey: true, configId: 0, codecDesc: null, config: null },
+               [PACKET_TYPE.SCREEN_AUDIO]: { active: false, encoder: null },
+               [PACKET_TYPE.MICROPHONE]: { active: false, encoder: null },
+               [PACKET_TYPE.WEBCAM_VIDEO]: { active: false, encoder: null, frameCtr: 0, nextKey: true, configId: 0, codecDesc: null, config: null },
+              };
+
+              async function readMediaLoop(reader, type) {
+                const state = workerStates[type];
+
+                while (state.active) {
+                  try {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    if (state.encoder && state.encoder.state === "configured") {
+                      if (state.encoder.encodeQueueSize <= 3) {
+
+                        const frameIsLandscape = value.displayWidth >= value.displayHeight;
+                        const configIsLandscape = state.config.width >= state.config.height;
+
+                        if (frameIsLandscape !== configIsLandscape) {
+                        const temp = state.config.width;
+                        state.config.width = state.config.height;
+                        state.config.height = temp;
+                        try {
+                          state.encoder.configure(state.config);
+                          state.nextKey = true;
+                        } catch(e) { console.log(e); }
+                        }
+
+                        state.encoder.encode(value, { keyFrame: state.nextKey });
+                        state.nextKey = false;
+                      }
+                      }
+                      value.close();
+                  } catch (error) {
+                    console.log(error);
+                    break;
+                  }
+                }
+              }
+
+              async function packAndSendVideo(chunk, metadata, type) {
+                const state = workerStates[type];
+                if (metadata?.decoderConfig?.description) state.codecDesc = new Uint8Array(metadata.decoderConfig.description);
+                else if (chunk.type === "key" && !state.codecDesc) state.codecDesc = new Uint8Array(0);
+
+                const frameId = state.frameCtr++ % 65535, isKey = chunk.type === "key" ? 1 : 0;
+                const descLength = isKey && state.codecDesc ? state.codecDesc.byteLength : 0;
+                const headerLength = isKey ? 3 + descLength : 0;
+
+                const logicalFrame = new Uint8Array(headerLength + chunk.byteLength);
+                if (isKey) {
+                  logicalFrame[0] = state.configId;
+                  new DataView(logicalFrame.buffer).setUint16(1, descLength, true);
+                  if (descLength > 0) logicalFrame.set(state.codecDesc, 3);
+                }
+                chunk.copyTo(logicalFrame.subarray(headerLength));
+
+                const MTU = maxDatagramSize - 52;
+                const totalChunks = Math.ceil(logicalFrame.byteLength / MTU);
+                const timestampBig = BigInt(chunk.timestamp);
+
+                for (let i = 0; i < totalChunks; i++) {
+                  const start = i * MTU;
+                  const part = logicalFrame.subarray(start, Math.min(start + MTU, logicalFrame.byteLength));
+
+                  const plainBytes = new Uint8Array(new ArrayBuffer((i === 0 ? 24 : 15) + part.byteLength));
+                  const plainView = new DataView(plainBytes.buffer);
+
+                  plainBytes[0] = type;
+                  plainView.setBigUint64(1, myStreamId, true);
+                  plainView.setUint16(9, frameId, true);
+                  plainView.setUint16(11, i, true);
+                  plainView.setUint16(13, totalChunks, true);
+
+                  if (i === 0) {
+                    plainBytes[15] = isKey;
+                    plainView.setBigInt64(16, timestampBig, true);
+                    plainBytes.set(part, 24);
+                  } else {
+                    plainBytes.set(part, 15);
+                  }
+
+                  await encryptAndSend(plainBytes);
+                }
+              }
+
+              async function packAndSendAudio(chunk, type) {
+                const plainBytes = new Uint8Array(21 + chunk.byteLength);
+                const plainView = new DataView(plainBytes.buffer);
+
+                plainBytes[0] = type;
+                plainView.setBigUint64(1, myStreamId, true);
+                plainView.setBigInt64(9, BigInt(chunk.timestamp), true);
+                plainView.setUint32(17, chunk.duration || 20000, true);
+                chunk.copyTo(plainBytes.subarray(21));
+
+                await encryptAndSend(plainBytes);
+              }
+
+              async function encryptAndSend(plainBytes) {
+                const iv = getNextIV();
+                const encryptedData = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, plainBytes));
+                const packet = new Uint8Array(12 + encryptedData.byteLength);
+                packet.set(iv, 0);
+                packet.set(encryptedData, 12);
+
+                if (packet.byteLength <= maxDatagramSize) {
+                  postMessage({ cmd: "SEND_PACKET", packet }, [packet.buffer]);
+                }
+              }
+
+              onmessage = async (e) => {
+                const { cmd, payload } = e.data;
+
+                if (cmd === "INIT") {
+                  cryptoKey = payload.cryptoKey;
+                  myStreamId = payload.myStreamId;
+                  sharedIvView.setUint32(0, (crypto.getRandomValues(new Uint32Array(1))[0] ^ Number(myStreamId & 0xffffffffn)) >>> 0, true);
+                }
+                else if (cmd === "ADD_VIDEO_TRACK") {
+                  const { type, readable, track, config, codecs } = payload;
+                  const state = workerStates[type];
+                  state.active = true;
+                  state.nextKey = true;
+                  state.frameCtr = 0;
+                  state.configId = Math.max(0, codecs.indexOf(config.codec));
+                  state.config = config;
+
+                  state.encoder = new VideoEncoder({
+                  output: (c, m) => packAndSendVideo(c, m, type),
+                  error: console.error
+                  });
+                  state.encoder.configure(config);
+
+                  let videoReadable = readable;
+
+                  if (!videoReadable && track) {
+                  try {
+                    const processor = new MediaStreamTrackProcessor({ track });
+                    videoReadable = processor.readable;
+                  } catch(e) { console.log(e); }
+                  }
+
+                  if (videoReadable) {
+                  readMediaLoop(videoReadable.getReader(), type);
+                  }
+                }
+                else if (cmd === "ENCODE_VIDEO_FRAME") {
+                  const { type, frame } = payload;
+                  const state = workerStates[type];
+
+                  if (state.encoder && state.encoder.state === "configured") {
+                   if (state.encoder.encodeQueueSize <= 3) {
+
+                    const frameIsLandscape = frame.displayWidth >= frame.displayHeight;
+                    const configIsLandscape = state.config.width >= state.config.height;
+
+                    if (frameIsLandscape !== configIsLandscape) {
+                     const temp = state.config.width;
+                     state.config.width = state.config.height;
+                     state.config.height = temp;
+                     try {
+                      state.encoder.configure(state.config);
+                      state.nextKey = true;
+                     } catch(e) { console.log(e); }
+                    }
+
+                    state.encoder.encode(frame, { keyFrame: state.nextKey });
+                    state.nextKey = false;
+                   }
+                  }
+                  frame.close();
+                }
+                else if (cmd === "INIT_AUDIO_ENCODER") {
+                  const { type, config } = payload;
+                  const state = workerStates[type];
+                  state.active = true;
+                  state.encoder = new AudioEncoder({ output: (c) => packAndSendAudio(c, type), error: console.error });
+                  state.encoder.configure(config);
+                }
+                else if (cmd === "ENCODE_AUDIO_DATA") {
+                  const { type, data, frames, channels, sampleRate, timestamp } = payload;
+                  const state = workerStates[type];
+
+                  if (state.active && state.encoder && state.encoder.state === "configured") {
+                    const audioData = new AudioData({
+                      format: 'f32-planar',
+                      sampleRate: sampleRate,
+                      numberOfFrames: frames,
+                      numberOfChannels: channels,
+                      timestamp: timestamp,
+                      data: new Float32Array(data)
+                    });
+
+                    try {
+                      state.encoder.encode(audioData);
+                    } catch (err) {
+                      console.log(err);
+                    } finally {
+                      audioData.close();
+                    }
+                  }
+                }
+                else if (cmd === "STOP_TRACK") {
+                  const state = workerStates[payload.type];
+                  if (state) {
+                    state.active = false;
+                    if (state.encoder?.state !== "closed") state.encoder?.close();
+                    if (state.track) {
+                      try { state.track.stop(); } catch (error) { console.log(error); }
+                      state.track = null;
+                    }
+                  }
+                }
+                else if (cmd === "FORCE_KEYFRAME" && workerStates[payload.type]) {
+                  workerStates[payload.type].nextKey = true;
+                }
+                else if (cmd === "SEND_REQ_KEY") {
+                  const reqBytes = new Uint8Array(10);
+                  const reqView = new DataView(reqBytes.buffer);
+                  reqBytes[0] = PACKET_TYPE.REQ_KEY;
+                  reqView.setBigUint64(1, payload.targetPeerId, true);
+                  reqBytes[9] = payload.requestType;
+                  await encryptAndSend(reqBytes);
+                }
+              };
+            `;
+
+            const PACKET_TYPE = {
+                SCREEN_VIDEO: 0,
+                SCREEN_AUDIO: 1,
+                MICROPHONE: 2,
+                WEBCAM_VIDEO: 3,
+                REQ_KEY: 255,
+            };
+
+            const CODECS = [
+                "av01.0.17M.08",
+                "vp09.00.52.08",
+                "hvc1.1.4.L156.B0",
+                "avc1.64003E",
+
+                "av01.0.13M.08",
+                "vp09.00.51.08",
+                "hvc1.1.4.L153.B0",
+                "avc1.640034",
+
+                "av01.0.12M.08",
+                "vp09.00.50.08",
+                "hvc1.1.4.L150.B0",
+                "avc1.640033",
+
+                "av01.0.09M.08",
+                "vp09.00.41.08",
+                "hvc1.1.4.L123.B0",
+                "avc1.64002A",
+
+                "av01.0.08M.08",
+                "vp09.00.40.08",
+                "hvc1.1.4.L120.B0",
+                "avc1.640028",
+
+                "av01.0.05M.08",
+                "vp09.00.31.08",
+                "hvc1.1.4.L93.B0",
+                "avc1.640020",
+
+                "av01.0.04M.08",
+                "vp09.00.30.08",
+                "hvc1.1.4.L90.B0",
+                "avc1.64001F",
+            ];
+
+            function getCodecString(codecLabel, width, height, framerate) {
+                const pixels = width * height;
+                let levelIndex = 0;
+
+                if (pixels > 3000000)
+                    levelIndex = framerate >= 120 ? 0 : framerate >= 60 ? 1 : 2;
+                else if (pixels > 1000000)
+                    levelIndex = framerate >= 120 ? 2 : framerate >= 60 ? 3 : 4;
+                else
+                    levelIndex = framerate >= 120 ? 3 : framerate >= 60 ? 5 : 6;
+
+                const codecOffset =
+                    codecLabel === "AV1"
+                        ? 0
+                        : codecLabel === "VP9"
+                          ? 1
+                          : codecLabel === "HEVC"
+                            ? 2
+                            : 3;
+
+                return CODECS[levelIndex * 4 + codecOffset];
+            }
+
+            const audioWorkletCode = `
+                   class JitterBufferProcessor extends AudioWorkletProcessor {
+                    constructor() {
+                     super();
+                     this.capacity = 48000 * 2;
+                     this.buffer = new Float32Array(this.capacity * 2);
+                     this.writeIdx = 0;
+                     this.readIdx = 0;
+                     this.framesAvailable = 0;
+                     this.isPlaying = false;
+
+                     this.port.onmessage = (e) => {
+                      const { data, frames, channels } = e.data;
+                      if (this.framesAvailable + frames <= this.capacity) {
+                       for (let i = 0; i < frames; i++) {
+                        for (let c = 0; c < 2; c++) {
+                         const srcChannel = c < channels ? c : 0;
+                         this.buffer[(this.writeIdx * 2) + c] = data[i * channels + srcChannel];
+                        }
+                        this.writeIdx = (this.writeIdx + 1) % this.capacity;
+                       }
+                       this.framesAvailable += frames;
+                      }
+                     };
+                    }
+
+                    process(inputs, outputs) {
+                     const output = outputs[0];
+                     const channels = output.length;
+                     const framesToRead = output[0].length;
+
+                     if (!this.isPlaying && this.framesAvailable >= 2400) {
+                      this.isPlaying = true;
+                     }
+
+                     if (!this.isPlaying || this.framesAvailable < framesToRead) {
+                      this.isPlaying = false;
+                      return true;
+                     }
+
+                     for (let i = 0; i < framesToRead; i++) {
+                      for (let c = 0; c < channels; c++) {
+                       output[c][i] = this.buffer[(this.readIdx * 2) + c];
+                      }
+                      this.readIdx = (this.readIdx + 1) % this.capacity;
+                     }
+                     this.framesAvailable -= framesToRead;
+
+                     return true;
+                    }
+                   }
+                   registerProcessor('jitter-buffer-processor', JitterBufferProcessor);
+
+                   class AudioCaptureProcessor extends AudioWorkletProcessor {
+                    constructor() {
+                     super();
+                     this.timestamp = 0;
+                     this.batchSize = 960;
+                     this.buffer = [];
+                     this.framesCollected = 0;
+                    }
+
+                    process(inputs, outputs) {
+                     const input = inputs[0];
+                     if (!input || input.length === 0 || input[0].length === 0) return true;
+
+                     const channelCount = input.length;
+                     const frameCount = input[0].length;
+
+                     if (this.buffer.length !== channelCount) {
+                       this.buffer = [];
+                       for (let c = 0; c < channelCount; c++) {
+                         this.buffer.push(new Float32Array(this.batchSize));
+                       }
+                     }
+
+                     let framesToCopy = frameCount;
+                     let inputOffset = 0;
+
+                     while (framesToCopy > 0) {
+                       const spaceLeft = this.batchSize - this.framesCollected;
+                       const chunkFrames = Math.min(framesToCopy, spaceLeft);
+
+                       for (let c = 0; c < channelCount; c++) {
+                         const channelInput = input[c].subarray(inputOffset, inputOffset + chunkFrames);
+                         this.buffer[c].set(channelInput, this.framesCollected);
+                       }
+
+                       this.framesCollected += chunkFrames;
+                       inputOffset += chunkFrames;
+                       framesToCopy -= chunkFrames;
+
+                       if (this.framesCollected >= this.batchSize) {
+                         const data = new Float32Array(this.batchSize * channelCount);
+                         let offset = 0;
+                         for (let c = 0; c < channelCount; c++) {
+                           data.set(this.buffer[c], offset);
+                           offset += this.batchSize;
+                         }
+
+                         this.port.postMessage({
+                           data: data.buffer,
+                           frames: this.batchSize,
+                           channels: channelCount,
+                           sampleRate: sampleRate,
+                           timestamp: Math.round(this.timestamp)
+                         }, [data.buffer]);
+
+                         this.timestamp += (this.batchSize / sampleRate) * 1000000;
+                         this.framesCollected = 0;
+                       }
+                     }
+                     return true;
+                    }
+                   }
+                   registerProcessor('audio-capture-processor', AudioCaptureProcessor);
+                  `;
+
+            let webtransport,
+                currentMaxDatagramSize,
+                cryptoKey,
+                chosenVideoConfig,
+                senderWorker,
+                audioCtx,
+                roomPassword;
+
+            async function initAudioEngine() {
+                if (audioCtx) return;
+                audioCtx = new AudioContext({
+                    sampleRate: 48000,
+                });
+                await audioCtx.audioWorklet.addModule(
+                    `data:text/javascript,${encodeURIComponent(audioWorkletCode)}`,
+                );
+            }
+
+            document.addEventListener("click", resumeAudioEngine, {
+                once: true,
+            });
+            document.addEventListener("touchstart", resumeAudioEngine, {
+                passive: true,
+                once: true,
+            });
+
+            async function resumeAudioEngine() {
+                if (!audioCtx) {
+                    return;
+                }
+                try {
+                    if (audioCtx.state !== "running") {
+                        await audioCtx.resume();
+                    }
+                } catch (error) {
+                    console.log(error);
+                }
+            }
+
+            connectToServer();
+
+            const localStates = Object.fromEntries(
+                Object.values(PACKET_TYPE).map((t) => [
+                    t,
+                    { active: false, stream: null, track: null },
+                ]),
+            );
+
+            const remotePeers = new Map();
+            const myStreamId = crypto.getRandomValues(new BigUint64Array(1))[0];
+
+            const dialogElement = document.getElementById("modal");
+            const selectSourceElement =
+                document.getElementById("selectSourceButton");
+            const codecContainerElement =
+                document.getElementById("codecContainer");
+            const resolutionContainerElement = document.getElementById(
+                "resolutionContainer",
+            );
+            const framerateContainerElement =
+                document.getElementById("framerateContainer");
+            const rearCameraWrap = document.getElementById("rearCameraWrap");
+            const rearCameraToggleElement =
+                document.getElementById("rearCameraToggle");
+            const softwareEncodingWrap = document.getElementById(
+                "softwareEncodingWrap",
+            );
+            const softwareEncodingToggleElement = document.getElementById(
+                "softwareEncodingToggle",
+            );
+            const isMobileDevice = navigator.maxTouchPoints > 1;
+            const isWebKit = window.GestureEvent;
+
+            const bitrateValueElement = document.getElementById("bitrateValue");
+            const bitrateSliderElement =
+                document.getElementById("bitrateSlider");
+            const streamToggleElement = document.getElementById("streamToggle");
+            const micSvgElement = document.getElementById("microphoneToggle");
+            const cameraToggleElement = document.getElementById("cameraToggle");
+
+            if (isMobileDevice) {
+                streamToggleElement.style.display = "none";
+                if (isWebKit) {
+                    softwareEncodingWrap.style.display = "none";
+                }
+            } else {
+                rearCameraWrap.style.display = "none";
+            }
+
+            dialogElement.onclick = (e) => {
+                if (e.target === dialogElement) dialogElement.close();
+            };
+
+            bitrateSliderElement.oninput = (e) => {
+                bitrateValueElement.textContent = e.target.value;
+                updateDialogElement();
+            };
+
+            softwareEncodingToggleElement.onchange = () => {
+                updateDialogElement();
+            };
+
+            async function connectToServer() {
+                if (!roomPassword) {
+                    roomPassword = prompt("Enter room password:") || "default";
+                }
+
+                const textEncoder = new TextEncoder();
+                cryptoKey = await crypto.subtle.deriveKey(
+                    {
+                        name: "PBKDF2",
+                        salt: textEncoder.encode(
+                            "628b460e-c34c-429d-a73a-ec69dda577cz",
+                        ),
+                        iterations: 250000,
+                        hash: "SHA-256",
+                    },
+                    await crypto.subtle.importKey(
+                        "raw",
+                        textEncoder.encode(roomPassword),
+                        "PBKDF2",
+                        false,
+                        ["deriveKey"],
+                    ),
+                    { name: "AES-GCM", length: 256 },
+                    false,
+                    ["encrypt", "decrypt"],
+                );
+
+                try {
+                    webtransport = new WebTransport(
+                        `https://92.255.196.108:5001/628b460e-c34c-429d-a73a-ec69dda577cz`,
+                        {
+                            serverCertificateHashes: [
+                                {
+                                    algorithm: "sha-256",
+                                    value: new Uint8Array([
+                                        13, 66, 34, 213, 139, 87, 126, 249, 54,
+                                        109, 33, 23, 1, 48, 152, 180, 209, 148,
+                                        248, 69, 157, 114, 32, 73, 250, 34, 126,
+                                        97, 28, 155, 32, 86,
+                                    ]),
+                                },
+                            ],
+                        },
+                    );
+                    await webtransport.ready;
+
+                    webtransport.closed
+                        .then(() => handleDisconnect())
+                        .catch((error) => {
+                            console.log(error);
+                            handleDisconnect();
+                        });
+
+                    const datagramWritable =
+                        typeof webtransport.datagrams.createWritable ===
+                        "function"
+                            ? webtransport.datagrams.createWritable()
+                            : webtransport.datagrams.writable;
+
+                    const datagramWriter = datagramWritable.getWriter();
+
+                    if (!senderWorker) {
+                        senderWorker = createWorker(writerWorkerCode);
+                    }
+
+                    senderWorker.postMessage({
+                        cmd: "INIT",
+                        payload: {
+                            cryptoKey,
+                            myStreamId,
+                        },
+                    });
+
+                    senderWorker.onmessage = (e) => {
+                        if (
+                            e.data.cmd === "SEND_PACKET" &&
+                            webtransport &&
+                            webtransport.state !== "closed"
+                        ) {
+                            datagramWriter.write(e.data.packet).catch(() => {});
+                        }
+                    };
+
+                    await initAudioEngine();
+                    readIncomingDatagrams();
+                } catch (error) {
+                    console.log(error);
+                    handleDisconnect();
+                }
+            }
+
+            let isReconnecting = false;
+
+            function handleDisconnect() {
+                if (isReconnecting) return;
+                isReconnecting = true;
+
+                Object.values(PACKET_TYPE).forEach((type) => {
+                    if (localStates[type].active) {
+                        stopLocalMedia(type);
+                    }
+                });
+
+                streamToggleElement.textContent = "Start Stream";
+                streamToggleElement.classList.remove("is-active");
+                if (cameraToggleElement)
+                    cameraToggleElement.classList.remove("is-active");
+                if (micSvgElement) micSvgElement.classList.remove("is-active");
+
+                setTimeout(() => {
+                    isReconnecting = false;
+                    connectToServer();
+                }, 1000);
+            }
+
+            function requestKeyframe(peerId, type) {
+                if (senderWorker)
+                    senderWorker.postMessage({
+                        cmd: "SEND_REQ_KEY",
+                        payload: { targetPeerId: peerId, requestType: type },
+                    });
+            }
+
+            function getOrInitRemoteMedia(peerId, type) {
+                if (!remotePeers.has(peerId)) {
+                    remotePeers.set(peerId, {
+                        media: {},
+                        streams: {
+                            screen: new MediaStream(),
+                            webcam: new MediaStream(),
+                            mic: new MediaStream(),
+                        },
+                        elements: {},
+                        writers: {},
+                        audioNodes: {},
+                    });
+                }
+                const peer = remotePeers.get(peerId);
+                if (peer.media[type]) return peer.media[type];
+
+                const mediaObj = {
+                    pending: new Map(),
+                    highestFid: undefined,
+                    lastDecId: -1,
+                    lastReqTime: 0,
+                    baseTs: null,
+                    sysAudioOffset: 0,
+                    isVideoConfigured: false,
+                    lastActivity: performance.now(),
+                };
+
+                const setupUI = (streamKey, kind, isScreen = false) => {
+                    if (kind === "video") {
+                        let actualWriter = null;
+                        let isWriting = false;
+
+                        peer.writers[`${streamKey}Vid`] = {
+                            write: async (frame) => {
+                                try {
+                                    if (actualWriter) {
+                                        await actualWriter.write(frame);
+                                    } else {
+                                        frame.close();
+                                    }
+                                } catch (error) {
+                                    console.log(error);
+                                    try {
+                                        frame.close();
+                                    } catch (e) {}
+                                }
+                            },
+                        };
+
+                        const attachTrackToDOM = (videoTrack) => {
+                            if (videoTrack) {
+                                peer.streams[streamKey].addTrack(videoTrack);
+                            }
+
+                            if (!peer.elements[streamKey]) {
+                                const wrapper = document.createElement("div");
+                                wrapper.classList.add("stream-wrapper");
+                                wrapper.dataset.streamId = peerId;
+                                wrapper.style.touchAction = "manipulation";
+
+                                const vidElem = document.createElement("video");
+                                vidElem.srcObject = peer.streams[streamKey];
+
+                                vidElem.controls = true;
+                                vidElem.autoplay = true;
+                                vidElem.playsInline = true;
+                                vidElem.volume = 0.25;
+
+                                vidElem.onclick = resumeAudioEngine;
+                                vidElem.ontouchstart = resumeAudioEngine;
+
+                                if (peer.audioNodes[streamKey])
+                                    vidElem.classList.add("has-audio");
+
+                                wrapper.append(vidElem);
+                                document.body.appendChild(wrapper);
+                                peer.elements[streamKey] = wrapper;
+                            }
+                        };
+
+                        try {
+                            if (!window.MediaStreamTrackGenerator) throw 0;
+
+                            const generator = new MediaStreamTrackGenerator({
+                                kind: "video",
+                            });
+                            const rawWriter = generator.writable.getWriter();
+
+                            actualWriter = {
+                                write: async (frame) => {
+                                    if (isWriting) {
+                                        try {
+                                            frame.close();
+                                        } catch {}
+                                        return;
+                                    }
+                                    isWriting = true;
+                                    try {
+                                        await rawWriter.write(frame);
+                                    } catch {
+                                        try {
+                                            frame.close();
+                                        } catch {}
+                                    } finally {
+                                        isWriting = false;
+                                    }
+                                },
+                            };
+                            attachTrackToDOM(generator);
+                        } catch {
+                            try {
+                                if (!isWebKit) throw 0;
+
+                                const workerCode = `
+                              let writer;
+                              onmessage = (e) => {
+                                if (e.data.cmd === 'init') {
+                                  try {
+                                    const generator = new VideoTrackGenerator();
+                                    writer = generator.writable.getWriter();
+                                    postMessage({ track: generator.track }, [generator.track]);
+                                  } catch {}
+                                } else if (e.data.cmd === 'frame') {
+                                  if (writer) {
+                                    writer.write(e.data.frame).catch(() => {
+                                      try { e.data.frame.close(); } catch {}
+                                    });
+                                  } else {
+                                    try { e.data.frame.close(); } catch {}
+                                  }
+                                }
+                              };
+                            `;
+
+                                const blob = new Blob([workerCode], {
+                                    type: "text/javascript",
+                                });
+                                const worker = new Worker(
+                                    URL.createObjectURL(blob),
+                                );
+
+                                peer.writers[`${streamKey}Vid`].worker = worker;
+
+                                worker.onmessage = (e) => {
+                                    if (e.data.track) {
+                                        attachTrackToDOM(e.data.track);
+
+                                        actualWriter = {
+                                            write: async (frame) => {
+                                                if (isWriting) {
+                                                    try {
+                                                        frame.close();
+                                                    } catch (e) {}
+                                                    return;
+                                                }
+                                                isWriting = true;
+                                                try {
+                                                    worker.postMessage(
+                                                        { cmd: "frame", frame },
+                                                        [frame],
+                                                    );
+                                                } catch {
+                                                    try {
+                                                        frame.close();
+                                                    } catch {}
+                                                }
+                                                isWriting = false;
+                                            },
+                                        };
+                                    }
+                                };
+                                worker.postMessage({ cmd: "init" });
+                            } catch {
+                                attachTrackToDOM(null);
+
+                                const wrapper = peer.elements[streamKey];
+                                const vidElem = wrapper.querySelector("video");
+
+                                vidElem.style.position = "absolute";
+                                vidElem.style.width = "100%";
+                                vidElem.style.height = "100%";
+                                vidElem.style.backgroundColor = "transparent";
+
+                                const canvas = document.createElement("canvas");
+                                canvas.style.width = "100%";
+                                canvas.style.height = "100%";
+                                canvas.style.objectFit = "contain";
+                                canvas.style.backgroundColor = "black";
+
+                                wrapper.style.position = "relative";
+                                wrapper.style.display = "flex";
+                                wrapper.style.touchAction = "manipulation";
+                                wrapper.insertBefore(canvas, vidElem);
+
+                                const ctx = canvas.getContext("2d");
+
+                                let isPlaying = !vidElem.paused;
+                                vidElem.addEventListener(
+                                    "play",
+                                    () => (isPlaying = true),
+                                );
+                                vidElem.addEventListener(
+                                    "pause",
+                                    () => (isPlaying = false),
+                                );
+                                actualWriter = {
+                                    write: async (frame) => {
+                                        if (isWriting) {
+                                            try {
+                                                frame.close();
+                                            } catch (e) {}
+                                            return;
+                                        }
+                                        isWriting = true;
+                                        try {
+                                            if (!isPlaying) {
+                                                frame.close();
+                                                isWriting = false;
+                                                return;
+                                            }
+                                            if (
+                                                canvas.width !==
+                                                    frame.displayWidth ||
+                                                canvas.height !==
+                                                    frame.displayHeight
+                                            ) {
+                                                canvas.width =
+                                                    frame.displayWidth;
+                                                canvas.height =
+                                                    frame.displayHeight;
+                                            }
+                                            ctx.drawImage(
+                                                frame,
+                                                0,
+                                                0,
+                                                canvas.width,
+                                                canvas.height,
+                                            );
+                                            frame.close();
+                                        } catch {
+                                            try {
+                                                frame.close();
+                                            } catch {}
+                                        }
+                                        isWriting = false;
+                                    },
+                                };
+                            }
+                        }
+
+                        return peer.writers[`${streamKey}Vid`];
+                    } else if (kind === "audio") {
+                        const workletNode = new AudioWorkletNode(
+                            audioCtx,
+                            "jitter-buffer-processor",
+                        );
+                        peer.audioNodes[streamKey] = workletNode;
+
+                        if (streamKey === "mic") {
+                            workletNode.connect(audioCtx.destination);
+                        } else {
+                            const destNode =
+                                audioCtx.createMediaStreamDestination();
+                            workletNode.connect(destNode);
+
+                            const audioTrack =
+                                destNode.stream.getAudioTracks()[0];
+                            peer.streams[streamKey].addTrack(audioTrack);
+
+                            if (peer.elements[streamKey]) {
+                                const vidElem =
+                                    peer.elements[streamKey].querySelector(
+                                        "video",
+                                    );
+                                if (vidElem) {
+                                    vidElem.srcObject = peer.streams[streamKey];
+                                    vidElem.classList.add("has-audio");
+                                }
+                            }
+                        }
+                        return workletNode;
+                    }
+                };
+
+                if (
+                    type === PACKET_TYPE.SCREEN_VIDEO ||
+                    type === PACKET_TYPE.SCREEN_AUDIO
+                ) {
+                    if (
+                        type === PACKET_TYPE.SCREEN_VIDEO &&
+                        !peer.writers.screenVid
+                    ) {
+                        setupUI("screen", "video");
+                    }
+
+                    if (
+                        type === PACKET_TYPE.SCREEN_AUDIO &&
+                        !peer.audioNodes.screen
+                    ) {
+                        setupUI("screen", "audio");
+                    }
+
+                    if (type === PACKET_TYPE.SCREEN_VIDEO) {
+                        mediaObj.decoder = new VideoDecoder({
+                            output: (f) => peer.writers.screenVid.write(f),
+                            error: () => {
+                                mediaObj.isVideoConfigured = false;
+                                requestKeyframe(peerId, type);
+                            },
+                        });
+                    } else {
+                        mediaObj.decoder = new AudioDecoder({
+                            output: (audioData) => {
+                                const frames = audioData.numberOfFrames;
+                                const channels = audioData.numberOfChannels;
+                                const tempBuf = new Float32Array(
+                                    frames * channels,
+                                );
+                                audioData.copyTo(tempBuf, {
+                                    planeIndex: 0,
+                                    format: "f32",
+                                });
+
+                                const worklet = peer.audioNodes.screen;
+                                if (worklet) {
+                                    worklet.port.postMessage(
+                                        {
+                                            data: tempBuf,
+                                            frames,
+                                            channels,
+                                        },
+                                        [tempBuf.buffer],
+                                    );
+                                }
+                                audioData.close();
+                            },
+                            error: console.error,
+                        });
+                        mediaObj.decoder.configure({
+                            codec: "opus",
+                            sampleRate: 48000,
+                            numberOfChannels: 2,
+                        });
+                    }
+                } else if (type === PACKET_TYPE.WEBCAM_VIDEO) {
+                    const writer = setupUI("webcam", "video");
+                    mediaObj.decoder = new VideoDecoder({
+                        output: (f) => writer.write(f),
+                        error: () => {
+                            mediaObj.isVideoConfigured = false;
+                            requestKeyframe(peerId, type);
+                        },
+                    });
+                } else if (type === PACKET_TYPE.MICROPHONE) {
+                    setupUI("mic", "audio");
+                    mediaObj.decoder = new AudioDecoder({
+                        output: (audioData) => {
+                            const frames = audioData.numberOfFrames;
+                            const channels = audioData.numberOfChannels;
+                            const tempBuf = new Float32Array(frames * channels);
+                            audioData.copyTo(tempBuf, {
+                                planeIndex: 0,
+                                format: "f32",
+                            });
+
+                            const worklet = peer.audioNodes.mic;
+                            if (worklet) {
+                                worklet.port.postMessage(
+                                    {
+                                        data: tempBuf,
+                                        frames,
+                                        channels,
+                                    },
+                                    [tempBuf.buffer],
+                                );
+                            }
+                            audioData.close();
+                        },
+                        error: console.error,
+                    });
+                    mediaObj.decoder.configure({
+                        codec: "opus",
+                        sampleRate: 48000,
+                        numberOfChannels: 1,
+                    });
+                }
+
+                peer.media[type] = mediaObj;
+                return mediaObj;
+            }
+
+            let isHardwareInitializationDone = false;
+            let currentConfigType = PACKET_TYPE.SCREEN_VIDEO;
+            const availableCodecs = ["AV1", "VP9", "HEVC", "H.264"];
+            const availableFramerates = [120, 60, 30];
+            const resolutionToDimensionsMap = new Map();
+            const hwConfigCache = new Map();
+
+            async function updateDialogElement() {
+                const basePresets = [
+                    { label: "2160p", w: 3840, h: 2160 },
+                    { label: "1440p", w: 2560, h: 1440 },
+                    { label: "1080p", w: 1920, h: 1080 },
+                    { label: "720p", w: 1280, h: 720 },
+                ];
+
+                resolutionToDimensionsMap.clear();
+
+                basePresets.forEach((preset) => {
+                    resolutionToDimensionsMap.set(preset.label, {
+                        width: preset.w,
+                        height: preset.h,
+                    });
+                });
+
+                const availableResolutions = Array.from(
+                    resolutionToDimensionsMap.keys(),
+                );
+
+                const checkHW = async (
+                    codecLabel,
+                    resLabel,
+                    fps,
+                    force = false,
+                ) => {
+                    if (!force && softwareEncodingToggleElement.checked) {
+                        if (codecLabel === "HEVC") return false;
+                        return true;
+                    }
+
+                    const dims = resolutionToDimensionsMap.get(resLabel);
+                    const exactStr = getCodecString(
+                        codecLabel,
+                        dims.width,
+                        dims.height,
+                        fps,
+                    );
+
+                    const cacheKey = `${exactStr}-${dims.width}-${dims.height}-${fps}`;
+
+                    if (hwConfigCache.has(cacheKey)) {
+                        return hwConfigCache.get(cacheKey);
+                    }
+
+                    try {
+                        const res = await VideoEncoder.isConfigSupported({
+                            codec: exactStr,
+                            width: dims.width,
+                            height: dims.height,
+                            hardwareAcceleration: "prefer-hardware",
+                            framerate: fps,
+                        });
+
+                        hwConfigCache.set(cacheKey, res.supported);
+                        return res.supported;
+                    } catch (e) {
+                        hwConfigCache.set(cacheKey, false);
+                        return false;
+                    }
+                };
+
+                if (!isHardwareInitializationDone) {
+                    isHardwareInitializationDone = true;
+                    const hwInitChecks = [];
+                    for (const codec of availableCodecs) {
+                        hwInitChecks.push(
+                            await checkHW(
+                                codec,
+                                availableResolutions[
+                                    availableResolutions.length - 1
+                                ],
+                                30,
+                                true,
+                            ),
+                        );
+                    }
+                    if (!hwInitChecks.includes(true)) {
+                        softwareEncodingToggleElement.checked = true;
+                        softwareEncodingWrap.style.display = "none";
+                    }
+                }
+
+                let sCodec =
+                    codecContainerElement.querySelector(".is-active")
+                        ?.textContent || "AV1";
+                let sRes =
+                    resolutionContainerElement.querySelector(".is-active")
+                        ?.textContent || availableResolutions[0];
+                let sFps =
+                    Number(
+                        framerateContainerElement.querySelector(".is-active")
+                            ?.textContent,
+                    ) || 60;
+
+                const allCombinations = [];
+                for (const c of availableCodecs) {
+                    for (const r of availableResolutions) {
+                        for (const f of availableFramerates) {
+                            allCombinations.push({ c, r, f });
+                        }
+                    }
+                }
+
+                const hwResults = [];
+                for (const combo of allCombinations) {
+                    hwResults.push(await checkHW(combo.c, combo.r, combo.f));
+                }
+
+                const validCombos = allCombinations.filter(
+                    (_, idx) => hwResults[idx],
+                );
+
+                const supportedCodecs = availableCodecs.filter((c) =>
+                    validCombos.some((v) => v.c === c),
+                );
+
+                if (
+                    !supportedCodecs.includes(sCodec) &&
+                    supportedCodecs.length > 0
+                ) {
+                    sCodec = supportedCodecs[0];
+                }
+
+                const supportedResolutions = availableResolutions.filter((r) =>
+                    validCombos.some((v) => v.c === sCodec && v.r === r),
+                );
+
+                if (
+                    !supportedResolutions.includes(sRes) &&
+                    supportedResolutions.length > 0
+                ) {
+                    sRes = supportedResolutions[0];
+                }
+
+                const supportedFramerates = availableFramerates.filter((f) =>
+                    validCombos.some(
+                        (v) => v.c === sCodec && v.r === sRes && v.f === f,
+                    ),
+                );
+
+                if (
+                    !supportedFramerates.includes(sFps) &&
+                    supportedFramerates.length > 0
+                ) {
+                    sFps = supportedFramerates[0];
+                }
+
+                const renderBtns = (container, arr, active) => {
+                    container.textContent = "";
+                    for (const val of arr) {
+                        const btn = document.createElement("button");
+                        btn.textContent = val;
+                        if (val === active) btn.classList.add("is-active");
+                        btn.onclick = () => {
+                            if (val !== active) {
+                                container
+                                    .querySelector(".is-active")
+                                    ?.classList.remove("is-active");
+                                btn.classList.add("is-active");
+                                updateDialogElement();
+                            }
+                        };
+                        container.appendChild(btn);
+                    }
+                };
+
+                renderBtns(codecContainerElement, supportedCodecs, sCodec);
+                renderBtns(
+                    resolutionContainerElement,
+                    supportedResolutions,
+                    sRes,
+                );
+                renderBtns(
+                    framerateContainerElement,
+                    supportedFramerates,
+                    sFps,
+                );
+
+                const fDims = resolutionToDimensionsMap.get(sRes);
+                const fExact = getCodecString(
+                    sCodec,
+                    fDims.width,
+                    fDims.height,
+                    sFps,
+                );
+
+                chosenVideoConfig = {
+                    codec: fExact,
+                    width: fDims.width,
+                    height: fDims.height,
+                    hardwareAcceleration: softwareEncodingToggleElement.checked
+                        ? "prefer-software"
+                        : "prefer-hardware",
+                    framerate: sFps,
+                    bitrate: Number(bitrateSliderElement.value) * 1000000,
+                    bitrateMode: "constant",
+                    latencyMode: "realtime",
+                };
+
+                let cid = CODECS.indexOf(fExact);
+                localStates[currentConfigType].configId = cid === -1 ? 0 : cid;
+            }
+
+            function stopLocalMedia(type) {
+                const state = localStates[type];
+                state.active = false;
+
+                if (state.captureNode) {
+                    try {
+                        state.captureNode.disconnect();
+                    } catch (error) {}
+                    state.captureNode = null;
+                }
+                if (state.sourceNode) {
+                    try {
+                        state.sourceNode.disconnect();
+                    } catch (error) {}
+                    state.sourceNode = null;
+                }
+
+                if (state.track) {
+                    try {
+                        state.track.stop();
+                    } catch (error) {
+                        console.log(error);
+                    }
+                    state.track = null;
+                }
+                if (state.stream) {
+                    state.stream.getTracks().forEach((t) => {
+                        try {
+                            t.stop();
+                        } catch (error) {
+                            console.log(error);
+                        }
+                    });
+                    state.stream = null;
+                }
+
+                if (senderWorker) {
+                    senderWorker.postMessage({
+                        cmd: "STOP_TRACK",
+                        payload: { type },
+                    });
+                }
+            }
+
+            async function toggleStream() {
+                const type = PACKET_TYPE.SCREEN_VIDEO;
+                if (localStates[type].active) {
+                    stopLocalMedia(type);
+                    stopLocalMedia(PACKET_TYPE.SCREEN_AUDIO);
+                    streamToggleElement.textContent = "Start Stream";
+                    streamToggleElement.classList.remove("is-active");
+                } else {
+                    currentConfigType = type;
+                    selectSourceElement.textContent = "Select Source";
+                    await updateDialogElement();
+                    dialogElement.showModal();
+                }
+            }
+
+            async function toggleCamera() {
+                const type = PACKET_TYPE.WEBCAM_VIDEO;
+                if (localStates[type].active) {
+                    stopLocalMedia(type);
+                    if (cameraToggleElement)
+                        cameraToggleElement.classList.remove("is-active");
+                } else {
+                    currentConfigType = type;
+                    selectSourceElement.textContent = "Enable Camera";
+                    await updateDialogElement();
+                    dialogElement.showModal();
+                }
+            }
+
+            function addTrackToWorker(track, type, config, codecs = []) {
+                const isVideo = track.kind === "video";
+
+                if (isVideo) {
+                    try {
+                        if (!window.MediaStreamTrackProcessor) throw 0;
+
+                        const processor = new MediaStreamTrackProcessor({
+                            track,
+                        });
+                        senderWorker.postMessage(
+                            {
+                                cmd: "ADD_VIDEO_TRACK",
+                                payload: {
+                                    type,
+                                    readable: processor.readable,
+                                    config,
+                                    codecs,
+                                },
+                            },
+                            [processor.readable],
+                        );
+                    } catch {
+                        try {
+                            senderWorker.postMessage(
+                                {
+                                    cmd: "ADD_VIDEO_TRACK",
+                                    payload: { type, track, config, codecs },
+                                },
+                                [track],
+                            );
+                        } catch {
+                            senderWorker.postMessage({
+                                cmd: "ADD_VIDEO_TRACK",
+                                payload: { type, config, codecs },
+                            });
+
+                            const video = document.createElement("video");
+                            video.srcObject = new MediaStream([track]);
+                            video.autoplay = true;
+
+                            video.onplay = () => {
+                                const processFrame = (now, metadata) => {
+                                    const state = localStates[type];
+                                    if (!state || !state.active) {
+                                        video.pause();
+                                        video.srcObject = null;
+                                        return;
+                                    }
+
+                                    try {
+                                        const frame = new VideoFrame(video, {
+                                            timestamp:
+                                                metadata.mediaTime * 1000000,
+                                        });
+
+                                        senderWorker.postMessage(
+                                            {
+                                                cmd: "ENCODE_VIDEO_FRAME",
+                                                payload: { type, frame },
+                                            },
+                                            [frame],
+                                        );
+                                    } catch {}
+
+                                    video.requestVideoFrameCallback(
+                                        processFrame,
+                                    );
+                                };
+
+                                video.requestVideoFrameCallback(processFrame);
+                            };
+                        }
+                    }
+                } else {
+                    if (!audioCtx) return;
+
+                    config.sampleRate = audioCtx.sampleRate;
+                    const channels = config.numberOfChannels || 1;
+
+                    const source = audioCtx.createMediaStreamSource(
+                        new MediaStream([track]),
+                    );
+                    const captureNode = new AudioWorkletNode(
+                        audioCtx,
+                        "audio-capture-processor",
+                    );
+
+                    captureNode.channelCount = channels;
+                    captureNode.channelCountMode = "explicit";
+                    captureNode.channelInterpretation = "speakers";
+
+                    source.connect(captureNode);
+
+                    senderWorker.postMessage({
+                        cmd: "INIT_AUDIO_ENCODER",
+                        payload: { type, config },
+                    });
+
+                    captureNode.port.onmessage = (e) => {
+                        senderWorker.postMessage(
+                            {
+                                cmd: "ENCODE_AUDIO_DATA",
+                                payload: { type, ...e.data },
+                            },
+                            [e.data.data],
+                        );
+                    };
+
+                    localStates[type].captureNode = captureNode;
+                    localStates[type].sourceNode = source;
+                }
+            }
+
+            async function startMediaStream() {
+                dialogElement.close();
+
+                const isScreen = currentConfigType === PACKET_TYPE.SCREEN_VIDEO;
+                const type = currentConfigType;
+                let stream;
+
+                try {
+                    if (isScreen) {
+                        stream = await navigator.mediaDevices.getDisplayMedia({
+                            video: {
+                                frameRate: {
+                                    ideal: chosenVideoConfig.framerate,
+                                    max: chosenVideoConfig.framerate,
+                                },
+                            },
+                            audio: {
+                                echoCancellation: false,
+                                noiseSuppression: false,
+                                autoGainControl: false,
+                            },
+                        });
+
+                        const audioTrack = stream.getAudioTracks()[0];
+                        if (audioTrack) {
+                            const audioState =
+                                localStates[PACKET_TYPE.SCREEN_AUDIO];
+                            audioState.active = true;
+                            audioState.stream = stream;
+                            audioState.track = audioTrack;
+
+                            addTrackToWorker(
+                                audioTrack,
+                                PACKET_TYPE.SCREEN_AUDIO,
+                                {
+                                    codec: "opus",
+                                    numberOfChannels: 2,
+                                    opus: { usedtx: true },
+                                },
+                            );
+                        }
+
+                        streamToggleElement.textContent = "Stop Stream";
+                        streamToggleElement.classList.add("is-active");
+                    } else {
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: {
+                                width: { ideal: chosenVideoConfig.width },
+                                height: { ideal: chosenVideoConfig.height },
+                                frameRate: {
+                                    ideal: chosenVideoConfig.framerate,
+                                    max: chosenVideoConfig.framerate,
+                                },
+                                facingMode: rearCameraToggleElement.checked
+                                    ? "environment"
+                                    : "user",
+                            },
+                        });
+                        cameraToggleElement.classList.add("is-active");
+                    }
+                } catch (error) {
+                    console.log(error);
+                    return;
+                }
+
+                const videoTrack = stream.getVideoTracks()[0];
+                videoTrack.onended = isScreen ? toggleStream : toggleCamera;
+
+                const trackSettings = videoTrack.getSettings();
+                if (trackSettings.width && trackSettings.height) {
+                    const maxSourceDim = Math.max(
+                        trackSettings.width,
+                        trackSettings.height,
+                    );
+                    const maxTargetDim = Math.max(
+                        chosenVideoConfig.width,
+                        chosenVideoConfig.height,
+                    );
+
+                    if (maxTargetDim > maxSourceDim) {
+                        const scale = maxSourceDim / maxTargetDim;
+                        chosenVideoConfig.width =
+                            Math.round(chosenVideoConfig.width * scale) & ~1;
+                        chosenVideoConfig.height =
+                            Math.round(chosenVideoConfig.height * scale) & ~1;
+                    }
+                }
+
+                const videoState = localStates[type];
+                videoState.active = true;
+                videoState.stream = stream;
+                videoState.track = videoTrack;
+
+                addTrackToWorker(videoTrack, type, chosenVideoConfig, CODECS);
+            }
+
+            async function toggleMicrophone() {
+                if (localStates[PACKET_TYPE.MICROPHONE].active) {
+                    stopLocalMedia(PACKET_TYPE.MICROPHONE);
+                    micSvgElement.classList.remove("is-active");
+                    return;
+                }
+
+                let stream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: false,
+                        },
+                    });
+                } catch (error) {
+                    console.log(error);
+                    return;
+                }
+
+                micSvgElement.classList.add("is-active");
+                const audioTrack = stream.getAudioTracks()[0];
+                const state = localStates[PACKET_TYPE.MICROPHONE];
+                state.active = true;
+                state.stream = stream;
+                state.track = audioTrack;
+
+                addTrackToWorker(audioTrack, PACKET_TYPE.MICROPHONE, {
+                    codec: "opus",
+                    numberOfChannels: 1,
+                });
+            }
+
+            function getSeqDiff(newSeq, oldSeq) {
+                let diff = newSeq - oldSeq;
+                return diff < -32768
+                    ? diff + 65536
+                    : diff > 32768
+                      ? diff - 65536
+                      : diff;
+            }
+
+            async function readIncomingDatagrams() {
+                try {
+                    const reader = webtransport.datagrams.readable.getReader();
+
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+
+                        const iv = value.subarray(0, 12);
+                        const cipher = value.subarray(12);
+                        let decryptedBuffer;
+                        try {
+                            decryptedBuffer = await crypto.subtle.decrypt(
+                                { name: "AES-GCM", iv },
+                                cryptoKey,
+                                cipher,
+                            );
+                        } catch (error) {
+                            console.log(error);
+                            continue;
+                        }
+
+                        const decryptedData = new Uint8Array(decryptedBuffer);
+                        const decryptedView = new DataView(decryptedBuffer);
+                        const type = decryptedData[0];
+
+                        if (type === PACKET_TYPE.REQ_KEY) {
+                            const targetStreamId = decryptedView.getBigUint64(
+                                1,
+                                true,
+                            );
+                            const requestType = decryptedData[9];
+
+                            if (
+                                targetStreamId === myStreamId &&
+                                localStates[requestType]
+                            ) {
+                                if (senderWorker)
+                                    senderWorker.postMessage({
+                                        cmd: "FORCE_KEYFRAME",
+                                        payload: { type: requestType },
+                                    });
+                            }
+                            continue;
+                        }
+
+                        const peerId = decryptedView.getBigUint64(1, true);
+
+                        if (
+                            type === PACKET_TYPE.MICROPHONE ||
+                            type === PACKET_TYPE.SCREEN_AUDIO
+                        ) {
+                            if (
+                                type === PACKET_TYPE.MICROPHONE &&
+                                !localStates[PACKET_TYPE.MICROPHONE].active
+                            )
+                                continue;
+
+                            const media = getOrInitRemoteMedia(peerId, type);
+                            media.lastActivity = performance.now();
+
+                            const rawTimestamp = Number(
+                                decryptedView.getBigInt64(9, true),
+                            );
+
+                            if (media.baseTs === null) {
+                                media.baseTs = rawTimestamp;
+                                if (type === PACKET_TYPE.SCREEN_AUDIO) {
+                                    const peerVideo =
+                                        remotePeers.get(peerId)?.media[
+                                            PACKET_TYPE.SCREEN_VIDEO
+                                        ];
+                                    media.sysAudioOffset =
+                                        peerVideo?.currentVideoTs || 0;
+                                }
+                            }
+                            const adjustedTimestamp = Math.max(
+                                0,
+                                rawTimestamp -
+                                    media.baseTs +
+                                    media.sysAudioOffset,
+                            );
+
+                            const chunk = new EncodedAudioChunk({
+                                type: "key",
+                                timestamp: adjustedTimestamp,
+                                duration: decryptedView.getUint32(17, true),
+                                data: decryptedData.subarray(21),
+                            });
+
+                            if (
+                                media.decoder &&
+                                media.decoder.state === "configured"
+                            ) {
+                                try {
+                                    media.decoder.decode(chunk);
+                                } catch (err) {
+                                    console.log("Audio decode error:", err);
+                                }
+                            }
+                            continue;
+                        }
+
+                        if (
+                            type === PACKET_TYPE.SCREEN_VIDEO ||
+                            type === PACKET_TYPE.WEBCAM_VIDEO
+                        ) {
+                            const media = getOrInitRemoteMedia(peerId, type);
+                            media.lastActivity = performance.now();
+
+                            const frameId = decryptedView.getUint16(9, true);
+                            const chunkIndex = decryptedView.getUint16(
+                                11,
+                                true,
+                            );
+                            const totalChunks = decryptedView.getUint16(
+                                13,
+                                true,
+                            );
+
+                            if (
+                                media.highestFid === undefined ||
+                                getSeqDiff(frameId, media.highestFid) > 0
+                            )
+                                media.highestFid = frameId;
+
+                            if (media.pending.size > 20) {
+                                for (const key of media.pending.keys()) {
+                                    if (getSeqDiff(media.highestFid, key) > 30)
+                                        media.pending.delete(key);
+                                }
+                            }
+
+                            let entry = media.pending.get(frameId);
+                            if (!entry) {
+                                entry = {
+                                    chunks: new Array(totalChunks),
+                                    got: 0,
+                                    ts: 0,
+                                    isKey: false,
+                                };
+                                media.pending.set(frameId, entry);
+                            }
+
+                            if (chunkIndex === 0) {
+                                entry.isKey = decryptedData[15] === 1;
+                                entry.ts = Number(
+                                    decryptedView.getBigInt64(16, true),
+                                );
+                                entry.chunks[0] = decryptedData.subarray(24);
+                            } else {
+                                entry.chunks[chunkIndex] =
+                                    decryptedData.subarray(15);
+                            }
+                            entry.got++;
+
+                            if (entry.got === totalChunks) {
+                                media.pending.delete(frameId);
+
+                                if (
+                                    !entry.isKey &&
+                                    frameId !== (media.lastDecId + 1) % 65535
+                                ) {
+                                    const now = performance.now();
+                                    if (now - media.lastReqTime > 1000) {
+                                        media.lastReqTime = now;
+                                        requestKeyframe(peerId, type);
+                                    }
+                                    continue;
+                                }
+
+                                const length = entry.chunks.reduce(
+                                    (acc, c) => acc + c.byteLength,
+                                    0,
+                                );
+                                const fullData = new Uint8Array(length);
+                                let offset = 0;
+                                for (const c of entry.chunks) {
+                                    fullData.set(c, offset);
+                                    offset += c.byteLength;
+                                }
+
+                                let finalVideoData = fullData;
+
+                                if (entry.isKey) {
+                                    const configId = fullData[0];
+                                    const descriptionLength = new DataView(
+                                        fullData.buffer,
+                                        fullData.byteOffset,
+                                        fullData.byteLength,
+                                    ).getUint16(1, true);
+                                    const descriptionData =
+                                        descriptionLength > 0
+                                            ? fullData.subarray(
+                                                  3,
+                                                  3 + descriptionLength,
+                                              )
+                                            : undefined;
+
+                                    finalVideoData = fullData.subarray(
+                                        3 + descriptionLength,
+                                    );
+                                    const codecString = CODECS[configId];
+
+                                    if (codecString) {
+                                        const decoderConfig = {
+                                            codec: codecString,
+                                            optimizeForLatency: true,
+                                        };
+                                        if (descriptionData)
+                                            decoderConfig.description =
+                                                descriptionData;
+
+                                        if (
+                                            media.isVideoConfigured &&
+                                            media.decoder.state !== "closed"
+                                        )
+                                            media.decoder.reset();
+                                        media.decoder.configure(decoderConfig);
+                                        media.isVideoConfigured = true;
+                                    }
+                                }
+
+                                if (media.baseTs === null)
+                                    media.baseTs = entry.ts;
+                                media.currentVideoTs = entry.ts - media.baseTs;
+
+                                if (
+                                    media.isVideoConfigured &&
+                                    media.decoder.state === "configured"
+                                ) {
+                                    try {
+                                        media.decoder.decode(
+                                            new EncodedVideoChunk({
+                                                type: entry.isKey
+                                                    ? "key"
+                                                    : "delta",
+                                                timestamp: Math.max(
+                                                    0,
+                                                    media.currentVideoTs,
+                                                ),
+                                                data: finalVideoData,
+                                            }),
+                                        );
+                                        media.lastDecId = frameId;
+                                    } catch (error) {
+                                        console.log(error);
+                                        media.isVideoConfigured = false;
+                                        requestKeyframe(peerId, type);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.log(error);
+                }
+            }
+
+            setInterval(() => {
+                const now = performance.now();
+                for (const [peerId, peer] of remotePeers.entries()) {
+                    for (const type of Object.values(PACKET_TYPE)) {
+                        const mediaObj = peer.media[type];
+                        if (mediaObj && now - mediaObj.lastActivity > 3000) {
+                            if (
+                                mediaObj.decoder &&
+                                mediaObj.decoder.state !== "closed"
+                            ) {
+                                try {
+                                    mediaObj.decoder.close();
+                                } catch {}
+                            }
+                            delete peer.media[type];
+                        }
+                    }
+
+                    const cleanupGroup = (key, streamTypes) => {
+                        if (!streamTypes.some((type) => peer.media[type])) {
+                            if (peer.audioNodes[key]) {
+                                try {
+                                    peer.audioNodes[key].disconnect();
+                                } catch (error) {
+                                    console.log(
+                                        "Audio node disconnect error:",
+                                        error,
+                                    );
+                                }
+                                delete peer.audioNodes[key];
+                            }
+
+                            if (peer.elements[key]) {
+                                peer.elements[key].remove();
+                                delete peer.elements[key];
+                            }
+
+                            if (peer.streams[key]) {
+                                peer.streams[key].getTracks().forEach((t) => {
+                                    try {
+                                        t.stop();
+                                    } catch {}
+                                });
+                                peer.streams[key] = new MediaStream();
+                            }
+
+                            const writerKey = `${key}Vid`;
+                            if (peer.writers[writerKey]) {
+                                const writerObj = peer.writers[writerKey];
+                                if (writerObj.worker) {
+                                    try {
+                                        writerObj.worker.terminate();
+                                    } catch {}
+                                }
+                                delete peer.writers[writerKey];
+                            }
+                        }
+                    };
+
+                    cleanupGroup("screen", [
+                        PACKET_TYPE.SCREEN_VIDEO,
+                        PACKET_TYPE.SCREEN_AUDIO,
+                    ]);
+                    cleanupGroup("webcam", [PACKET_TYPE.WEBCAM_VIDEO]);
+                    cleanupGroup("mic", [PACKET_TYPE.MICROPHONE]);
+
+                    if (Object.keys(peer.media).length === 0) {
+                        remotePeers.delete(peerId);
+                    }
+                }
+            }, 1000);
+        </script>
+    </body>
+</html>

@@ -1,0 +1,9 @@
+[package]
+name = "hypertube"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wtransport = "0.7.1"
+tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
+bytes = { version = "1.11.1", default-features = false }
