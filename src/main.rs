@@ -252,7 +252,7 @@ mod webtransport {
 
         pub async fn serve(self) {
             let (dgram_tx, _) = broadcast::channel::<DatagramMsg>(4096);
-            let (route_tx, _) = broadcast::channel::<RouterMsg>(16);
+            let (route_tx, _) = broadcast::channel::<RouterMsg>(32);
 
             loop {
                 let incoming = self.endpoint.accept().await;
