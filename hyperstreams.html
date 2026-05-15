@@ -7,7 +7,7 @@
         <link
             rel="icon"
             type="image/svg+xml"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><style>path{fill:%23000}@media(prefers-color-scheme:dark){path{fill:%23fff}}</style><path d='M6 4v16l14-8z'/></svg>"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><style>path{fill:%238f86ff}</style><path d='M6 4v16l14-8z'/></svg>"
         />
         <style>
             * {
@@ -22,7 +22,7 @@
             :root {
                 --bg-color: #000;
                 --text-color: #fff;
-                --accent-color: #888;
+                --accent-color: #999;
                 color-scheme: dark;
             }
 
@@ -773,8 +773,6 @@
             const softwareEncodingToggleElement = document.getElementById(
                 "softwareEncodingToggle",
             );
-            const isMobileDevice = navigator.maxTouchPoints > 1;
-            const isWebKit = window.GestureEvent;
 
             const bitrateValueElement = document.getElementById("bitrateValue");
             const bitrateSliderElement =
@@ -783,7 +781,9 @@
             const micSvgElement = document.getElementById("microphoneToggle");
             const cameraToggleElement = document.getElementById("cameraToggle");
 
-            if (isMobileDevice) {
+            const isWebKit = window.GestureEvent;
+
+            if (!navigator.mediaDevices.getDisplayMedia) {
                 streamToggleElement.style.display = "none";
                 if (isWebKit) {
                     softwareEncodingWrap.style.display = "none";
@@ -834,16 +834,16 @@
 
                 try {
                     webtransport = new WebTransport(
-                        `https://92.255.196.108:5001/628b460e-c34c-429d-a73a-ec69dda577cz`,
+                        `https://146.19.211.31:5002/628b460e-c34c-429d-a73a-ec69dda577cz`,
                         {
                             serverCertificateHashes: [
                                 {
                                     algorithm: "sha-256",
                                     value: new Uint8Array([
-                                        13, 66, 34, 213, 139, 87, 126, 249, 54,
-                                        109, 33, 23, 1, 48, 152, 180, 209, 148,
-                                        248, 69, 157, 114, 32, 73, 250, 34, 126,
-                                        97, 28, 155, 32, 86,
+                                        127, 58, 249, 54, 227, 227, 22, 95, 139,
+                                        239, 44, 213, 160, 42, 234, 63, 94, 15,
+                                        83, 9, 45, 143, 226, 168, 162, 62, 130,
+                                        86, 74, 252, 7, 253,
                                     ]),
                                 },
                             ],

@@ -8,7 +8,7 @@ async fn main() {
     let cert_digest = wt_identity.certificate_chain().as_slice()[0].hash();
     println!("{}", cert_digest.fmt(Sha256DigestFmt::BytesArray));
 
-    let webtransport_server = WebTransportServer::new(wt_identity, 5001);
+    let webtransport_server = WebTransportServer::new(wt_identity, 5002);
     webtransport_server.serve().await;
 }
 
@@ -103,7 +103,7 @@ mod webtransport {
 
                     uni_res = connection.accept_uni() => {
                      if let Ok(mut recv_stream) = uni_res {
-                      let (stream_tx, _) = broadcast::channel::<Bytes>(32768);
+                      let (stream_tx, _) = broadcast::channel::<Bytes>(8192);
 
                       let expected_receivers = global_route_tx.receiver_count().saturating_sub(1);
 
@@ -252,7 +252,7 @@ mod webtransport {
 
         pub async fn serve(self) {
             let (dgram_tx, _) = broadcast::channel::<DatagramMsg>(4096);
-            let (route_tx, _) = broadcast::channel::<RouterMsg>(4096);
+            let (route_tx, _) = broadcast::channel::<RouterMsg>(64);
 
             loop {
                 let incoming = self.endpoint.accept().await;
