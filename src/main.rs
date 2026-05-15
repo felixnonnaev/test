@@ -103,7 +103,7 @@ mod webtransport {
 
                     uni_res = connection.accept_uni() => {
                      if let Ok(mut recv_stream) = uni_res {
-                      let (stream_tx, _) = broadcast::channel::<Bytes>(2048);
+                      let (stream_tx, _) = broadcast::channel::<Bytes>(1024);
 
                       let expected_receivers = global_route_tx.receiver_count().saturating_sub(1);
 
