@@ -1,143 +1,15 @@
-use axum::{
-    Router,
-    extract::Request,
-    http::{
-        HeaderMap, StatusCode, Uri,
-        header::{CONTENT_ENCODING, CONTENT_TYPE, HOST},
-    },
-    response::{IntoResponse, Response},
-    routing::get,
-};
-use core::result::Result::Err;
-use hyper::body::Incoming;
-use hyper_util::rt::{TokioExecutor, TokioIo};
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    path::Path,
-    sync::Arc,
-};
-use tokio::net::TcpListener;
-use tokio_rustls::{
-    TlsAcceptor,
-    rustls::{
-        ServerConfig,
-        pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
-    },
-};
-use tower_service::Service;
 use webtransport::WebTransportServer;
 use wtransport::Identity;
-
-mod http_data {
-    pub const HYPERSTREAMS_INDEX: &[u8] = include_bytes!("hyperstreams.html.br");
-    pub const HYPERMESSAGES_INDEX: &[u8] = include_bytes!("hypermessages.html.br");
-}
-
-async fn serve_index(uri: Uri, headers: HeaderMap) -> Response {
-    let host_str = headers
-        .get(HOST)
-        .and_then(|val| val.to_str().ok())
-        .or_else(|| uri.authority().map(|auth| auth.host()))
-        .unwrap_or("");
-
-    let domain = host_str.split(':').next().unwrap_or(host_str);
-
-    let data: &'static [u8] = match domain {
-        "hypermessages.deadbrains.app" => http_data::HYPERMESSAGES_INDEX,
-        "hyperstreams.deadbrains.app" => http_data::HYPERSTREAMS_INDEX,
-        _ => http_data::HYPERSTREAMS_INDEX,
-    };
-
-    (
-        StatusCode::OK,
-        [
-            (CONTENT_TYPE, "text/html; charset=utf-8"),
-            (CONTENT_ENCODING, "br"),
-        ],
-        data,
-    )
-        .into_response()
-}
-
-fn rustls_server_config(
-    key_path: impl AsRef<Path>,
-    cert_path: impl AsRef<Path>,
-) -> Arc<ServerConfig> {
-    let key = PrivateKeyDer::from_pem_file(key_path).unwrap();
-    let certs = CertificateDer::pem_file_iter(cert_path)
-        .unwrap()
-        .map(|cert| cert.unwrap())
-        .collect();
-
-    let mut config = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)
-        .unwrap();
-
-    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-
-    config.max_early_data_size = 16384;
-
-    Arc::new(config)
-}
+use wtransport::tls::Sha256DigestFmt;
 
 #[tokio::main]
 async fn main() {
-    println!("/628b460e-c34c-429d-a73a-ec69dda577cz");
+    let wt_identity = Identity::self_signed(["localhost"]).unwrap();
+    let cert_digest = wt_identity.certificate_chain().as_slice()[0].hash();
+    println!("{}", cert_digest.fmt(Sha256DigestFmt::BytesArray));
 
-    let cert_path = "tls_cert.pem";
-    let key_path = "tls_key.pem";
-
-    let rustls_config = rustls_server_config(key_path, cert_path);
-    let tls_acceptor = TlsAcceptor::from(rustls_config);
-
-    let http_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 5000));
-    let tcp_listener = TcpListener::bind(http_addr).await.unwrap();
-
-    let app = Router::new().route("/628b460e-c34c-429d-a73a-ec69dda577cz", get(serve_index));
-
-    let http_server_task = tokio::spawn(async move {
-        loop {
-            let tower_service = app.clone();
-            let tls_acceptor = tls_acceptor.clone();
-
-            let (cnx, _) = match tcp_listener.accept().await {
-                Ok(res) => res,
-                Err(_) => continue,
-            };
-
-            tokio::spawn(async move {
-                let stream = match tls_acceptor.accept(cnx).await {
-                    Ok(s) => s,
-                    Err(_) => return,
-                };
-
-                let io = TokioIo::new(stream);
-
-                let hyper_service =
-                    hyper::service::service_fn(move |request: Request<Incoming>| {
-                        tower_service.clone().call(request)
-                    });
-
-                let _ = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new())
-                    .serve_connection_with_upgrades(io, hyper_service)
-                    .await;
-            });
-        }
-    });
-
-    let wt_identity = Identity::load_pemfiles(cert_path, key_path).await.unwrap();
-
-    let webtransport_server = WebTransportServer::new(wt_identity, 5001);
-
-    let wt_server_task = tokio::spawn(async move {
-        webtransport_server.serve().await;
-    });
-
-    tokio::select! {
-        _ = http_server_task => {}
-        _ = wt_server_task => {}
-    }
+    let webtransport_server = WebTransportServer::new(wt_identity, 5002);
+    webtransport_server.serve().await;
 }
 
 mod webtransport {
