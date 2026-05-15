@@ -103,7 +103,7 @@ mod webtransport {
 
                     uni_res = connection.accept_uni() => {
                      if let Ok(mut recv_stream) = uni_res {
-                      let (stream_tx, _) = broadcast::channel::<Bytes>(4096);
+                      let (stream_tx, _) = broadcast::channel::<Bytes>(2048);
 
                       let expected_receivers = global_route_tx.receiver_count().saturating_sub(1);
 
@@ -252,7 +252,7 @@ mod webtransport {
 
         pub async fn serve(self) {
             let (dgram_tx, _) = broadcast::channel::<DatagramMsg>(4096);
-            let (route_tx, _) = broadcast::channel::<RouterMsg>(32);
+            let (route_tx, _) = broadcast::channel::<RouterMsg>(16);
 
             loop {
                 let incoming = self.endpoint.accept().await;
