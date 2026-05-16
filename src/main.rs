@@ -103,7 +103,7 @@ mod webtransport {
 
                     uni_res = connection.accept_uni() => {
                      if let Ok(mut recv_stream) = uni_res {
-                      let (stream_tx, _) = broadcast::channel::<Bytes>(1024);
+                      let (stream_tx, _) = broadcast::channel::<Bytes>(512);
 
                       let expected_receivers = global_route_tx.receiver_count().saturating_sub(1);
 
@@ -198,13 +198,21 @@ mod webtransport {
                                     let mut stream_rx = tx.subscribe();
 
                                     tokio::spawn(async move {
-                                        if let Ok(opening) = connection.open_uni().await {
-                                            if let Ok(mut out_stream) = opening.await {
-                                                while let Ok(chunk) = stream_rx.recv().await {
-                                                    if out_stream.write_all(&chunk).await.is_err() { break; }
+                                      if let Ok(opening) = connection.open_uni().await {
+                                        if let Ok(mut out_stream) = opening.await {
+                                          loop {
+                                            match tokio::time::timeout(std::time::Duration::from_secs(10), stream_rx.recv()).await {
+                                              Ok(Ok(chunk)) => {
+                                                if out_stream.write_all(&chunk).await.is_err() {
+                                                    break;
                                                 }
+                                              }
+                                              Ok(Err(_)) => break,
+                                              Err(_) => break,
                                             }
+                                          }
                                         }
+                                      }
                                     });
                                 }
                             }
