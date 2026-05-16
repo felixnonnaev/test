@@ -473,13 +473,20 @@
                   const { type, data, frames, channels, sampleRate, timestamp } = payload;
                   const state = workerStates[type];
 
+                  if (!state.audioBaseTs) {
+                    state.audioBaseTs = performance.now() * 1000;
+                    state.audioFrames = 0;
+                  }
+                  const alignedTimestamp = Math.round(state.audioBaseTs + (state.audioFrames * 1000000 / sampleRate));
+                  state.audioFrames += frames;
+
                   if (state.active && state.encoder && state.encoder.state === "configured") {
                     const audioData = new AudioData({
                       format: 'f32-planar',
                       sampleRate: sampleRate,
                       numberOfFrames: frames,
                       numberOfChannels: channels,
-                      timestamp: timestamp,
+                      timestamp: alignedTimestamp,
                       data: new Float32Array(data)
                     });
 
@@ -607,6 +614,13 @@
                         this.writeIdx = (this.writeIdx + 1) % this.capacity;
                        }
                        this.framesAvailable += frames;
+
+                       const maxLatencyFrames = 7200;
+                        if (this.framesAvailable > maxLatencyFrames) {
+                          const drop = this.framesAvailable - maxLatencyFrames;
+                          this.readIdx = (this.readIdx + drop) % this.capacity;
+                          this.framesAvailable = maxLatencyFrames;
+                        }
                       }
                      };
                     }
@@ -721,26 +735,15 @@
                 );
             }
 
-            document.addEventListener("click", resumeAudioEngine, {
-                once: true,
-            });
-            document.addEventListener("touchstart", resumeAudioEngine, {
-                passive: true,
-                once: true,
+            ['click', 'touchstart', 'touchend'].forEach(evt => {
+              document.addEventListener(evt, resumeAudioEngine, { passive: true, once: true });
             });
 
             async function resumeAudioEngine() {
-                if (!audioCtx) {
-                    return;
-                }
-                try {
-                    if (audioCtx.state !== "running") {
-                        await audioCtx.resume();
-                    }
-                } catch (error) {
-                    console.log(error);
-                }
-            }
+              if (!audioCtx) return;
+              if (audioCtx.state === "suspended") {
+                try { await audioCtx.resume(); } catch (error) { console.log(error); }
+              }
 
             connectToServer();
 
@@ -996,6 +999,7 @@
                                 vidElem.autoplay = true;
                                 vidElem.playsInline = true;
                                 vidElem.volume = 0.25;
+                                vidElem.muted = true;
 
                                 vidElem.onclick = resumeAudioEngine;
                                 vidElem.ontouchstart = resumeAudioEngine;
@@ -1187,28 +1191,8 @@
                         );
                         peer.audioNodes[streamKey] = workletNode;
 
-                        if (streamKey === "mic") {
-                            workletNode.connect(audioCtx.destination);
-                        } else {
-                            const destNode =
-                                audioCtx.createMediaStreamDestination();
-                            workletNode.connect(destNode);
+                        workletNode.connect(audioCtx.destination);
 
-                            const audioTrack =
-                                destNode.stream.getAudioTracks()[0];
-                            peer.streams[streamKey].addTrack(audioTrack);
-
-                            if (peer.elements[streamKey]) {
-                                const vidElem =
-                                    peer.elements[streamKey].querySelector(
-                                        "video",
-                                    );
-                                if (vidElem) {
-                                    vidElem.srcObject = peer.streams[streamKey];
-                                    vidElem.classList.add("has-audio");
-                                }
-                            }
-                        }
                         return workletNode;
                     }
                 };
@@ -1657,8 +1641,7 @@
 
                                     try {
                                         const frame = new VideoFrame(video, {
-                                            timestamp:
-                                                metadata.mediaTime * 1000000,
+                                            timestamp: performance.now() * 1000,
                                         });
 
                                         senderWorker.postMessage(
@@ -1668,7 +1651,9 @@
                                             },
                                             [frame],
                                         );
-                                    } catch {}
+                                    } catch {
+                                        if (frame) frame.close();
+                                    }
 
                                     video.requestVideoFrameCallback(
                                         processFrame,
@@ -1923,27 +1908,9 @@
                                 decryptedView.getBigInt64(9, true),
                             );
 
-                            if (media.baseTs === null) {
-                                media.baseTs = rawTimestamp;
-                                if (type === PACKET_TYPE.SCREEN_AUDIO) {
-                                    const peerVideo =
-                                        remotePeers.get(peerId)?.media[
-                                            PACKET_TYPE.SCREEN_VIDEO
-                                        ];
-                                    media.sysAudioOffset =
-                                        peerVideo?.currentVideoTs || 0;
-                                }
-                            }
-                            const adjustedTimestamp = Math.max(
-                                0,
-                                rawTimestamp -
-                                    media.baseTs +
-                                    media.sysAudioOffset,
-                            );
-
                             const chunk = new EncodedAudioChunk({
                                 type: "key",
-                                timestamp: adjustedTimestamp,
+                                timestamp: rawTimestamp,
                                 duration: decryptedView.getUint32(17, true),
                                 data: decryptedData.subarray(21),
                             });
@@ -2081,10 +2048,6 @@
                                     }
                                 }
 
-                                if (media.baseTs === null)
-                                    media.baseTs = entry.ts;
-                                media.currentVideoTs = entry.ts - media.baseTs;
-
                                 if (
                                     media.isVideoConfigured &&
                                     media.decoder.state === "configured"
@@ -2095,10 +2058,7 @@
                                                 type: entry.isKey
                                                     ? "key"
                                                     : "delta",
-                                                timestamp: Math.max(
-                                                    0,
-                                                    media.currentVideoTs,
-                                                ),
+                                                timestamp: entry.ts,
                                                 data: finalVideoData,
                                             }),
                                         );
