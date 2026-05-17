@@ -35,7 +35,7 @@ mod webtransport {
     pub enum RouterMsg {
         UniStream {
             sender_id: usize,
-            tx: broadcast::Sender<Bytes>,
+            subscribe_tx: mpsc::Sender<mpsc::Sender<Bytes>>,
         },
         BiStream {
             sender_id: usize,
@@ -102,33 +102,52 @@ mod webtransport {
                     }
 
                     uni_res = connection.accept_uni() => {
-                     if let Ok(mut recv_stream) = uni_res {
-                      let (stream_tx, _) = broadcast::channel::<Bytes>(512);
+                      if let Ok(mut recv_stream) = uni_res {
+                        let expected_receivers = global_route_tx.receiver_count().saturating_sub(1);
 
-                      let expected_receivers = global_route_tx.receiver_count().saturating_sub(1);
+                        let (subscribe_tx, mut subscribe_rx) = mpsc::channel::<mpsc::Sender<Bytes>>(128);
 
-                      let _ = global_route_tx.send(RouterMsg::UniStream {
-                       sender_id: my_id,
-                       tx: stream_tx.clone(),
-                      });
+                        let _ = global_route_tx.send(RouterMsg::UniStream {
+                          sender_id: my_id,
+                          subscribe_tx,
+                        });
 
-                      tokio::spawn(async move {
+                        tokio::spawn(async move {
+                          let mut receivers = Vec::new();
+
                           if expected_receivers > 0 {
-                              for _ in 0..50 {
-                                  if stream_tx.receiver_count() >= expected_receivers {
-                                      break;
-                                  }
-                                  tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                            let _ = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                              while let Some(tx) = subscribe_rx.recv().await {
+                                receivers.push(tx);
+                                if receivers.len() >= expected_receivers {
+                                  break;
+                                }
                               }
+                            }).await;
                           }
 
                           let mut buffer = vec![0; 65536];
                           while let Ok(Some(bytes_read)) = recv_stream.read(&mut buffer).await {
-                              let chunk = Bytes::copy_from_slice(&buffer[..bytes_read]);
-                              let _ = stream_tx.send(chunk);
+                            let chunk = Bytes::copy_from_slice(&buffer[..bytes_read]);
+
+                            while let Ok(tx) = subscribe_rx.try_recv() {
+                              receivers.push(tx);
+                            }
+
+                            let mut next_receivers = Vec::new();
+                            for tx in receivers {
+                              if tx.send(chunk.clone()).await.is_ok() {
+                                next_receivers.push(tx);
+                              }
+                            }
+                            receivers = next_receivers;
+
+                            if receivers.is_empty() {
+                                break;
+                            }
                           }
-                      });
-                     } else { break; }
+                        });
+                      } else { break; }
                     }
 
                     bi_res = connection.accept_bi() => {
@@ -191,31 +210,30 @@ mod webtransport {
                     }
 
                     route_msg = route_rx.recv() => {
-                        match route_msg {
-                            Ok(RouterMsg::UniStream { sender_id, tx }) => {
-                                if sender_id != my_id {
-                                    let connection = connection.clone();
-                                    let mut stream_rx = tx.subscribe();
+                      match route_msg {
+                        Ok(RouterMsg::UniStream { sender_id, subscribe_tx }) => {
+                          if sender_id != my_id {
+                            let connection = connection.clone();
 
-                                    tokio::spawn(async move {
-                                      if let Ok(opening) = connection.open_uni().await {
-                                        if let Ok(mut out_stream) = opening.await {
-                                          loop {
-                                            match tokio::time::timeout(std::time::Duration::from_secs(10), stream_rx.recv()).await {
-                                              Ok(Ok(chunk)) => {
-                                                if out_stream.write_all(&chunk).await.is_err() {
-                                                    break;
-                                                }
-                                              }
-                                              Ok(Err(_)) => break,
-                                              Err(_) => break,
-                                            }
-                                          }
-                                        }
+                            let (tx, mut rx) = mpsc::channel::<Bytes>(128);
+
+                            tokio::spawn(async move {
+                              if subscribe_tx.send(tx).await.is_ok() {
+                                if let Ok(opening) = connection.open_uni().await {
+                                  if let Ok(mut out_stream) = opening.await {
+
+                                    while let Some(chunk) = rx.recv().await {
+                                      if out_stream.write_all(&chunk).await.is_err() {
+                                        break;
                                       }
-                                    });
+                                    }
+
+                                  }
                                 }
-                            }
+                              }
+                            });
+                          }
+                        }
 
                             Ok(RouterMsg::BiStream { sender_id, req_data, winner_tx }) => {
                                 if sender_id != my_id {
@@ -260,7 +278,7 @@ mod webtransport {
 
         pub async fn serve(self) {
             let (dgram_tx, _) = broadcast::channel::<DatagramMsg>(4096);
-            let (route_tx, _) = broadcast::channel::<RouterMsg>(16);
+            let (route_tx, _) = broadcast::channel::<RouterMsg>(256);
 
             loop {
                 let incoming = self.endpoint.accept().await;
