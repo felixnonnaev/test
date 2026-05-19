@@ -13,16 +13,17 @@
             * {
                 font-family: "Courier New", monospace;
                 color: var(--text-color);
-                -webkit-tap-highlight-color: transparent;
                 outline: none;
+                -webkit-tap-highlight-color: transparent;
                 scrollbar-width: thin;
-                scrollbar-color: var(--accent-color) var(--bg-color);
+                scrollbar-color: var(--primary-color) var(--bg-color);
             }
 
             :root {
                 --bg-color: #000;
                 --text-color: #fff;
-                --accent-color: #999;
+                --primary-color: #8f86ff;
+                --accent-color: #fff;
                 color-scheme: dark;
             }
 
@@ -38,13 +39,23 @@
             }
 
             input[type="range"] {
-                accent-color: var(--accent-color);
+                accent-color: var(--primary-color);
                 cursor: pointer;
+                outline: 0.4rem solid var(--bg-color);
+                outline-offset: -0.35rem;
             }
 
             input[type="range"]::-moz-range-thumb {
-                height: 0;
-                background: black;
+                background: none;
+                border: none;
+            }
+
+            input[type="range"]::-moz-range-track {
+                background: #444;
+            }
+
+            input[type="range"]::-moz-range-progress {
+                background: var(--primary-color);
             }
 
             .stream-wrapper {
@@ -73,43 +84,43 @@
             button {
                 background: var(--bg-color);
                 border: none;
-                border-bottom: 2px solid var(--accent-color);
+                border-bottom: 2px solid var(--primary-color);
                 padding: 0.5rem;
                 cursor: pointer;
             }
 
             button.is-active {
-                background: var(--accent-color);
-                color: var(--text-color);
+                background: var(--primary-color);
+                color: var(--accent-color);
             }
 
             svg {
                 min-width: 2rem;
                 height: 2rem;
-                border-left: 2px solid var(--accent-color);
+                border-left: 2px solid var(--primary-color);
                 padding-left: 0.5rem;
                 cursor: pointer;
             }
 
             svg.is-active > path {
-                stroke: var(--text-color);
+                stroke: var(--accent-color);
             }
 
             @media (hover: hover) {
                 svg:hover > path {
-                    stroke: var(--text-color);
+                    stroke: var(--accent-color);
                 }
                 button:hover {
-                    color: var(--text-color);
-                    background-color: var(--accent-color);
+                    color: var(--accent-color);
+                    background-color: var(--primary-color);
                 }
                 input[type="range"]:hover {
-                    accent-color: var(--text-color);
+                    accent-color: var(--accent-color);
                 }
             }
 
             path {
-                stroke: var(--accent-color);
+                stroke: var(--primary-color);
                 fill: transparent;
             }
 
@@ -132,7 +143,7 @@
             }
 
             .dialog-content {
-                border: 2px solid var(--accent-color);
+                border: 2px solid var(--primary-color);
                 background: var(--bg-color);
                 padding: 6rem 3rem 5rem 3rem;
                 position: relative;
@@ -168,20 +179,18 @@
             #bitrateSlider {
                 width: 80%;
                 position: absolute;
-                left: 2.5rem;
-                outline: 0.4rem solid var(--bg-color);
-                outline-offset: -0.35rem;
+                left: 2.6rem;
             }
 
             input[type="checkbox"] {
                 appearance: none;
                 width: 1.1rem;
                 height: 1.1rem;
-                border: 2px solid var(--accent-color);
+                border: 2px solid var(--primary-color);
             }
 
             input[type="checkbox"]:checked {
-                background-color: var(--accent-color);
+                background-color: var(--primary-color);
             }
 
             video::-webkit-media-controls-current-time-display,
@@ -473,20 +482,13 @@
                   const { type, data, frames, channels, sampleRate, timestamp } = payload;
                   const state = workerStates[type];
 
-                  if (!state.audioBaseTs) {
-                    state.audioBaseTs = performance.now() * 1000;
-                    state.audioFrames = 0;
-                  }
-                  const alignedTimestamp = Math.round(state.audioBaseTs + (state.audioFrames * 1000000 / sampleRate));
-                  state.audioFrames += frames;
-
                   if (state.active && state.encoder && state.encoder.state === "configured") {
                     const audioData = new AudioData({
                       format: 'f32-planar',
                       sampleRate: sampleRate,
                       numberOfFrames: frames,
                       numberOfChannels: channels,
-                      timestamp: alignedTimestamp,
+                      timestamp: timestamp,
                       data: new Float32Array(data)
                     });
 
@@ -606,22 +608,22 @@
                      this.port.onmessage = (e) => {
                       const { data, frames, channels } = e.data;
                       if (this.framesAvailable + frames <= this.capacity) {
-                       for (let i = 0; i < frames; i++) {
+                        for (let i = 0; i < frames; i++) {
                         for (let c = 0; c < 2; c++) {
-                         const srcChannel = c < channels ? c : 0;
-                         this.buffer[(this.writeIdx * 2) + c] = data[i * channels + srcChannel];
+                          const srcChannel = c < channels ? c : 0;
+                          this.buffer[(this.writeIdx * 2) + c] = data[i * channels + srcChannel];
                         }
                         this.writeIdx = (this.writeIdx + 1) % this.capacity;
-                       }
-                       this.framesAvailable += frames;
+                        }
+                        this.framesAvailable += frames;
 
-                       const maxLatencyFrames = 7200;
+                        const maxLatencyFrames = 7680;
                         if (this.framesAvailable > maxLatencyFrames) {
                           const drop = this.framesAvailable - maxLatencyFrames;
                           this.readIdx = (this.readIdx + drop) % this.capacity;
                           this.framesAvailable = maxLatencyFrames;
                         }
-                      }
+                        }
                      };
                     }
 
@@ -630,7 +632,7 @@
                      const channels = output.length;
                      const framesToRead = output[0].length;
 
-                     if (!this.isPlaying && this.framesAvailable >= 2400) {
+                     if (!this.isPlaying && this.framesAvailable >= 4800) {
                       this.isPlaying = true;
                      }
 
@@ -723,7 +725,8 @@
                 chosenVideoConfig,
                 senderWorker,
                 audioCtx,
-                roomPassword;
+                roomPassword,
+                isReconnecting;
 
             async function initAudioEngine() {
                 if (audioCtx) return;
@@ -735,17 +738,20 @@
                 );
             }
 
-            ['click', 'touchstart', 'touchend'].forEach(evt => {
-              document.addEventListener(evt, resumeAudioEngine, { passive: true, once: true });
-            });
-
             async function resumeAudioEngine() {
-              if (!audioCtx) return;
-              if (audioCtx.state === "suspended") {
-                try { await audioCtx.resume(); } catch (error) { console.log(error); }
-              }
+                if (!audioCtx) {
+                    return;
+                }
+                try {
+                    if (audioCtx.state !== "running") {
+                        await audioCtx.resume();
+                    }
+                } catch {}
+            }
 
-            connectToServer();
+            document.addEventListener("click", resumeAudioEngine, {
+                once: true,
+            });
 
             const localStates = Object.fromEntries(
                 Object.values(PACKET_TYPE).map((t) => [
@@ -808,19 +814,20 @@
                 updateDialogElement();
             };
 
+            const textEncoder = new TextEncoder();
+
             async function connectToServer() {
                 if (!roomPassword) {
                     roomPassword = prompt("Enter room password:") || "default";
                 }
 
-                const textEncoder = new TextEncoder();
                 cryptoKey = await crypto.subtle.deriveKey(
                     {
                         name: "PBKDF2",
                         salt: textEncoder.encode(
                             "628b460e-c34c-429d-a73a-ec69dda577cz",
                         ),
-                        iterations: 250000,
+                        iterations: 100000,
                         hash: "SHA-256",
                     },
                     await crypto.subtle.importKey(
@@ -843,10 +850,10 @@
                                 {
                                     algorithm: "sha-256",
                                     value: new Uint8Array([
-                                        127, 58, 249, 54, 227, 227, 22, 95, 139,
-                                        239, 44, 213, 160, 42, 234, 63, 94, 15,
-                                        83, 9, 45, 143, 226, 168, 162, 62, 130,
-                                        86, 74, 252, 7, 253,
+                                        61, 153, 1, 214, 240, 150, 113, 142,
+                                        170, 138, 52, 222, 170, 62, 20, 40, 178,
+                                        7, 47, 7, 232, 13, 55, 231, 183, 105,
+                                        158, 19, 21, 226, 75, 135,
                                     ]),
                                 },
                             ],
@@ -899,8 +906,6 @@
                 }
             }
 
-            let isReconnecting = false;
-
             function handleDisconnect() {
                 if (isReconnecting) return;
                 isReconnecting = true;
@@ -922,6 +927,8 @@
                     connectToServer();
                 }, 1000);
             }
+
+            connectToServer();
 
             function requestKeyframe(peerId, type) {
                 if (senderWorker)
@@ -954,7 +961,6 @@
                     lastDecId: -1,
                     lastReqTime: 0,
                     baseTs: null,
-                    sysAudioOffset: 0,
                     isVideoConfigured: false,
                     lastActivity: performance.now(),
                 };
@@ -993,23 +999,52 @@
                                 wrapper.style.touchAction = "manipulation";
 
                                 const vidElem = document.createElement("video");
+
+                                if (audioCtx) {
+                                    const dummyAudio = audioCtx
+                                        .createMediaStreamDestination()
+                                        .stream.getAudioTracks()[0];
+                                    peer.streams[streamKey].addTrack(
+                                        dummyAudio,
+                                    );
+                                }
+
                                 vidElem.srcObject = peer.streams[streamKey];
-
                                 vidElem.controls = true;
-                                vidElem.autoplay = true;
                                 vidElem.playsInline = true;
-                                vidElem.volume = 0.25;
-                                vidElem.muted = true;
+                                vidElem.volume = 1.0;
 
-                                vidElem.onclick = resumeAudioEngine;
-                                vidElem.ontouchstart = resumeAudioEngine;
-
-                                if (peer.audioNodes[streamKey])
-                                    vidElem.classList.add("has-audio");
+                                vidElem.onplay = () => {
+                                    resumeAudioEngine();
+                                };
 
                                 wrapper.append(vidElem);
                                 document.body.appendChild(wrapper);
                                 peer.elements[streamKey] = wrapper;
+
+                                const gainNode =
+                                    peer.audioNodes[`${streamKey}Gain`];
+                                if (gainNode) {
+                                    vidElem.classList.add("has-audio");
+
+                                    const syncAudio = () => {
+                                        gainNode.gain.value =
+                                            vidElem.paused || vidElem.muted
+                                                ? 0
+                                                : vidElem.volume;
+                                    };
+
+                                    vidElem.addEventListener(
+                                        "volumechange",
+                                        syncAudio,
+                                    );
+                                    vidElem.addEventListener(
+                                        "pause",
+                                        syncAudio,
+                                    );
+                                    vidElem.addEventListener("play", syncAudio);
+                                    syncAudio();
+                                }
                             }
                         };
 
@@ -1045,28 +1080,26 @@
                         } catch {
                             try {
                                 if (!isWebKit) throw 0;
-
                                 const workerCode = `
-                              let writer;
-                              onmessage = (e) => {
-                                if (e.data.cmd === 'init') {
-                                  try {
+                                 let writer;
+                                 onmessage = (e) => {
+                                  if (e.data.cmd === 'init') {
+                                   try {
                                     const generator = new VideoTrackGenerator();
                                     writer = generator.writable.getWriter();
                                     postMessage({ track: generator.track }, [generator.track]);
-                                  } catch {}
-                                } else if (e.data.cmd === 'frame') {
-                                  if (writer) {
+                                   } catch {}
+                                  } else if (e.data.cmd === 'frame') {
+                                   if (writer) {
                                     writer.write(e.data.frame).catch(() => {
-                                      try { e.data.frame.close(); } catch {}
+                                     try { e.data.frame.close(); } catch {}
                                     });
-                                  } else {
+                                   } else {
                                     try { e.data.frame.close(); } catch {}
+                                   }
                                   }
-                                }
-                              };
-                            `;
-
+                                 };
+                                `;
                                 const blob = new Blob([workerCode], {
                                     type: "text/javascript",
                                 });
@@ -1079,7 +1112,6 @@
                                 worker.onmessage = (e) => {
                                     if (e.data.track) {
                                         attachTrackToDOM(e.data.track);
-
                                         actualWriter = {
                                             write: async (frame) => {
                                                 if (isWriting) {
@@ -1138,6 +1170,7 @@
                                     "pause",
                                     () => (isPlaying = false),
                                 );
+
                                 actualWriter = {
                                     write: async (frame) => {
                                         if (isWriting) {
@@ -1191,7 +1224,34 @@
                         );
                         peer.audioNodes[streamKey] = workletNode;
 
-                        workletNode.connect(audioCtx.destination);
+                        const gainNode = audioCtx.createGain();
+                        workletNode.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+
+                        peer.audioNodes[`${streamKey}Gain`] = gainNode;
+
+                        if (peer.elements[streamKey]) {
+                            const vidElem =
+                                peer.elements[streamKey].querySelector("video");
+                            if (vidElem) {
+                                vidElem.classList.add("has-audio");
+
+                                const syncAudio = () => {
+                                    gainNode.gain.value =
+                                        vidElem.paused || vidElem.muted
+                                            ? 0
+                                            : vidElem.volume;
+                                };
+
+                                vidElem.addEventListener(
+                                    "volumechange",
+                                    syncAudio,
+                                );
+                                vidElem.addEventListener("pause", syncAudio);
+                                vidElem.addEventListener("play", syncAudio);
+                                syncAudio();
+                            }
+                        }
 
                         return workletNode;
                     }
@@ -1641,7 +1701,8 @@
 
                                     try {
                                         const frame = new VideoFrame(video, {
-                                            timestamp: performance.now() * 1000,
+                                            timestamp:
+                                                metadata.mediaTime * 1000000,
                                         });
 
                                         senderWorker.postMessage(
@@ -1651,9 +1712,7 @@
                                             },
                                             [frame],
                                         );
-                                    } catch {
-                                        if (frame) frame.close();
-                                    }
+                                    } catch {}
 
                                     video.requestVideoFrameCallback(
                                         processFrame,
@@ -1908,9 +1967,17 @@
                                 decryptedView.getBigInt64(9, true),
                             );
 
+                            if (media.baseTs === null) {
+                                media.baseTs = rawTimestamp;
+                            }
+                            const adjustedTimestamp = Math.max(
+                                0,
+                                rawTimestamp - media.baseTs,
+                            );
+
                             const chunk = new EncodedAudioChunk({
                                 type: "key",
-                                timestamp: rawTimestamp,
+                                timestamp: adjustedTimestamp,
                                 duration: decryptedView.getUint32(17, true),
                                 data: decryptedData.subarray(21),
                             });
@@ -2048,6 +2115,10 @@
                                     }
                                 }
 
+                                if (media.baseTs === null)
+                                    media.baseTs = entry.ts;
+                                media.currentVideoTs = entry.ts - media.baseTs;
+
                                 if (
                                     media.isVideoConfigured &&
                                     media.decoder.state === "configured"
@@ -2058,7 +2129,10 @@
                                                 type: entry.isKey
                                                     ? "key"
                                                     : "delta",
-                                                timestamp: entry.ts,
+                                                timestamp: Math.max(
+                                                    0,
+                                                    media.currentVideoTs,
+                                                ),
                                                 data: finalVideoData,
                                             }),
                                         );
@@ -2100,13 +2174,15 @@
                             if (peer.audioNodes[key]) {
                                 try {
                                     peer.audioNodes[key].disconnect();
-                                } catch (error) {
-                                    console.log(
-                                        "Audio node disconnect error:",
-                                        error,
-                                    );
-                                }
+                                } catch (error) {}
                                 delete peer.audioNodes[key];
+                            }
+
+                            if (peer.audioNodes[`${key}Gain`]) {
+                                try {
+                                    peer.audioNodes[`${key}Gain`].disconnect();
+                                } catch (error) {}
+                                delete peer.audioNodes[`${key}Gain`];
                             }
 
                             if (peer.elements[key]) {

@@ -2,7 +2,15 @@
 <html>
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script>
+            const isWebKit = window.GestureEvent;
+            const metaViewport = document.createElement("meta");
+            metaViewport.name = "viewport";
+            metaViewport.content = isWebKit
+                ? "width=device-width, initial-scale=1.0"
+                : "width=device-width, initial-scale=1.0, interactive-widget=resizes-content";
+            document.head.appendChild(metaViewport);
+        </script>
         <title>HyperMessages</title>
         <link
             rel="icon"
@@ -14,8 +22,8 @@
                 box-sizing: border-box;
                 font-family: "Courier New", monospace;
                 color: var(--text-color);
-                -webkit-tap-highlight-color: transparent;
                 outline: none;
+                -webkit-tap-highlight-color: transparent;
                 scrollbar-width: thin;
                 scrollbar-color: var(--accent-color) var(--bg-color);
             }
@@ -23,8 +31,8 @@
             :root {
                 --bg-color: #000;
                 --text-color: #fff;
-                --accent-color: #999;
-                --text-muted: #666;
+                --accent-color: #8f86ff;
+                --text-muted: #888;
                 color-scheme: dark;
             }
 
@@ -86,15 +94,13 @@
             }
 
             #messages > div {
-                padding: 1rem 1rem 0rem 1rem;
+                padding: 1rem 0 0rem 1rem;
                 overflow-wrap: anywhere;
                 position: relative;
                 border-radius: 0.5rem;
             }
 
             #messages > div > p {
-                margin: 0;
-                padding-top: 1.5rem;
                 white-space: pre-line;
             }
 
@@ -109,7 +115,6 @@
             #message-input {
                 grid-area: message-input;
                 border: none;
-                margin-top: 1.5rem;
                 border-top: 2px solid var(--accent-color);
                 resize: none;
                 outline: none;
@@ -142,7 +147,6 @@
 
             .attachments > figure {
                 margin: 0;
-                margin-top: 1.5rem;
                 align-self: center;
                 position: relative;
             }
@@ -162,6 +166,12 @@
             body > .attachments > figure > svg:nth-of-type(2),
             #messages .attachments > figure:hover > svg:nth-of-type(1) {
                 display: block;
+            }
+
+            @media (hover: none) {
+                #messages .attachments > figure > svg:nth-of-type(1) {
+                    display: block;
+                }
             }
 
             img,
@@ -208,7 +218,13 @@
                 max-height: 100%;
                 object-fit: contain;
                 cursor: zoom-in;
-                transition: transform 0.2s ease-out;
+                transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+                transform-origin: center center;
+            }
+
+            #modal-image.zoomed {
+                transform: scale(var(--zoom-scale, 2.5));
+                cursor: zoom-out;
             }
 
             #modal-close {
@@ -255,13 +271,13 @@
         <svg id="files-upload" viewBox="0 0 24 24">
             <path d="M12 6v12M6 12h12" />
         </svg>
-        <textarea id="message-input"></textarea>
+        <textarea id="message-input" spellcheck="false"></textarea>
         <dialog id="modal">
             <div class="dialog-content">
                 <svg id="modal-close" viewBox="0 0 24 24">
                     <path d="M19 5 5 19M5 5l14 14" />
                 </svg>
-                <img id="modal-image" src="" alt="Preview" />
+                <img id="modal-image" />
             </div>
         </dialog>
         <script>
@@ -274,35 +290,16 @@
             const modalImage = document.getElementById("modal-image");
             const modalClose = document.getElementById("modal-close");
 
-            let isZoomed;
-
-            function getChunkIV(baseIv, chunkIndex) {
-                const iv = new Uint8Array(baseIv);
-                const view = new DataView(iv.buffer);
-                view.setBigUint64(
-                    4,
-                    view.getBigUint64(4, true) + chunkIndex,
-                    true,
-                );
-                return iv;
-            }
-
             function openModal(src) {
-                const rect = messageInputElement.getBoundingClientRect();
-                messageInputElement.style.height = `${rect.height}px`;
-
                 modalImage.src = src;
-                isZoomed = false;
-                modalImage.style.transform = "scale(1)";
-                modalImage.style.cursor = "zoom-in";
+                modalImage.classList.remove("zoomed");
+                modalImage.style.transformOrigin = "center center";
                 dialogElement.showModal();
             }
 
             dialogElement.onclose = () => {
-                isZoomed = false;
-                modalImage.style.transform = "scale(1)";
+                modalImage.classList.remove("zoomed");
                 modalImage.src = "";
-                messageInputElement.style.height = "";
             };
 
             modalClose.onclick = () => dialogElement.close();
@@ -323,9 +320,7 @@
             }
 
             modalImage.onclick = (e) => {
-                isZoomed = !isZoomed;
-                if (isZoomed) {
-                    modalImage.style.cursor = "zoom-out";
+                if (!modalImage.classList.contains("zoomed")) {
                     updateTransformOrigin(e);
 
                     const scaleX =
@@ -335,41 +330,52 @@
 
                     let targetScale = Math.max(scaleX, scaleY);
 
-                    targetScale = Math.max(targetScale, 2);
+                    targetScale = Math.max(2, Math.min(targetScale, 3.5));
 
-                    modalImage.style.transform = `scale(${targetScale})`;
-                } else {
-                    modalImage.style.cursor = "zoom-in";
-                    modalImage.style.transform = "scale(1)";
+                    modalImage.style.setProperty("--zoom-scale", targetScale);
                 }
+
+                modalImage.classList.toggle("zoomed");
             };
 
             dialogElement.onmousemove = (e) => {
-                if (isZoomed) {
+                if (modalImage.classList.contains("zoomed")) {
                     updateTransformOrigin(e);
                 }
             };
 
-            const incomingMessages = new Map();
+            function getChunkIV(baseIv, chunkIndex) {
+                const iv = new Uint8Array(baseIv);
+                const view = new DataView(iv.buffer);
+                view.setBigUint64(
+                    4,
+                    view.getBigUint64(4, true) + chunkIndex,
+                    true,
+                );
+                return iv;
+            }
 
+            const incomingMessages = new Map();
             const textEncoder = new TextEncoder();
 
-            let webtransport, cryptoKey, database;
+            let webtransport, cryptoKey, database, roomPassword, isReconnecting;
 
-            (async () => {
-                const password = prompt("Enter room password:") || "default";
+            async function connectToServer() {
+                if (!roomPassword) {
+                    roomPassword = prompt("Enter room password:") || "default";
+                }
                 cryptoKey = await crypto.subtle.deriveKey(
                     {
                         name: "PBKDF2",
                         salt: textEncoder.encode(
                             "628b460e-c34c-429d-a73a-ec69dda577cz",
                         ),
-                        iterations: 250000,
+                        iterations: 100000,
                         hash: "SHA-256",
                     },
                     await crypto.subtle.importKey(
                         "raw",
-                        textEncoder.encode(password),
+                        textEncoder.encode(roomPassword),
                         "PBKDF2",
                         false,
                         ["deriveKey"],
@@ -402,23 +408,57 @@
                     databaseRequest.onsuccess = (e) => resolve(e.target.result);
                 });
 
-                webtransport = new WebTransport(
-                    `https://178.207.11.69:5002/628b460e-c34c-429d-a73a-ec69dda577cz`,
-                    {
-                        serverCertificateHashes: [
-                            {
-                                algorithm: "sha-256",
-                                value: new Uint8Array([72, 125, 240, 142, 206, 215, 197, 32, 52, 140, 147, 122, 36, 101, 232, 235, 102, 157, 19, 65, 151, 114, 238, 90, 228, 87, 40, 13, 190, 182, 70, 242]),
-                            },
-                        ],
-                    },
-                );
-                await webtransport.ready;
-                readIncomingUnidirectionalStreams();
-                readIncomingBidirectionalStreams();
+                try {
+                    webtransport = new WebTransport(
+                        `https://64.188.80.165:5002/628b460e-c34c-429d-a73a-ec69dda577cz`,
+                        {
+                            serverCertificateHashes: [
+                                {
+                                    algorithm: "sha-256",
+                                    value: new Uint8Array([
+                                        61, 153, 1, 214, 240, 150, 113, 142,
+                                        170, 138, 52, 222, 170, 62, 20, 40, 178,
+                                        7, 47, 7, 232, 13, 55, 231, 183, 105,
+                                        158, 19, 21, 226, 75, 135,
+                                    ]),
+                                },
+                            ],
+                        },
+                    );
+                    await webtransport.ready;
 
-                messageInputElement.focus();
-            })();
+                    webtransport.closed
+                        .then(() => handleDisconnect())
+                        .catch((error) => {
+                            console.log("WebTransport error:", error);
+                            handleDisconnect();
+                        });
+
+                    readIncomingUnidirectionalStreams();
+                    readIncomingBidirectionalStreams();
+
+                    messageInputElement.focus();
+
+                    isReconnecting = false;
+                } catch (error) {
+                    console.log("Connection failed:", error);
+                    handleDisconnect();
+                }
+            }
+
+            function handleDisconnect() {
+                if (isReconnecting) return;
+                isReconnecting = true;
+
+                incomingMessages.clear();
+
+                setTimeout(() => {
+                    isReconnecting = false;
+                    connectToServer();
+                }, 2000);
+            }
+
+            connectToServer();
 
             function createSvgElement(pathData) {
                 const svgElement = document.createElementNS(
@@ -512,6 +552,7 @@
             let uploadQueue = [];
 
             function uploadAttachments(newFiles) {
+                messageInputElement.focus();
                 if (newFiles.length === 0) return;
                 for (const file of newFiles) {
                     file.objectUrl = URL.createObjectURL(file);
@@ -535,7 +576,6 @@
                 while (newElements.firstChild) {
                     previewContainer.appendChild(newElements.firstChild);
                 }
-                messageInputElement.focus();
             }
 
             function createAttachmentsElement(files, onDeleteCallback = null) {
@@ -656,8 +696,6 @@
                 if (newFiles.length > 0) uploadAttachments(newFiles);
             };
 
-            document.onpaste = () => messageInputElement.focus();
-
             function escapeHtml(text) {
                 return String(text)
                     .replace(/&/g, "&amp;")
@@ -710,186 +748,245 @@
                 );
             }
 
-            document.onkeydown = (event) => {
-                if (!event.ctrlKey) messageInputElement.focus();
-            };
-
             messageInputElement.onkeydown = async (event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
+                if (event.isComposing) return;
+
+                if (event.key === "Enter") {
                     const inputText = messageInputElement.value.trim();
+                    const hasFiles = uploadQueue.length > 0;
 
-                    if (inputText || uploadQueue.length) {
-                        const messageId = crypto.getRandomValues(
-                            new BigUint64Array(1),
-                        )[0];
-                        prependMessageElement(inputText, uploadQueue);
+                    if (!event.shiftKey || (inputText === "" && hasFiles)) {
+                        event.preventDefault();
 
-                        let textStream = null;
-                        if (inputText) {
-                            textStream = new Blob([inputText])
-                                .stream()
-                                .pipeThrough(
-                                    new CompressionStream("deflate-raw"),
-                                );
-                        }
+                        if (inputText || hasFiles) {
+                            const messageId = crypto.getRandomValues(
+                                new BigUint64Array(1),
+                            )[0];
 
-                        writeUnidirectionalStream(
-                            { messageId, attachmentsCount: uploadQueue.length },
-                            textStream,
-                        );
+                            prependMessageElement(inputText, uploadQueue);
 
-                        for (let i = 0; i < uploadQueue.length; i++) {
-                            const file = uploadQueue[i];
-                            const meta = {
-                                messageId,
-                                attachmentsCount: uploadQueue.length,
-                                attachmentIndex: i,
-                                fileName: file.name,
-                                fileType: file.type,
-                            };
-
-                            if (file.size > 524288000) {
-                                if (file.handle) {
-                                    database
-                                        .transaction(
-                                            "fileHandlers",
-                                            "readwrite",
-                                        )
-                                        .objectStore("fileHandlers")
-                                        .put({
-                                            messageId: messageId.toString(),
-                                            attachmentIndex: i,
-                                            handle: file.handle,
-                                        });
-                                }
-                                writeUnidirectionalStream(meta, null);
-                            } else {
-                                writeUnidirectionalStream(meta, file.stream());
+                            let textStream = null;
+                            if (inputText) {
+                                textStream = new Blob([inputText])
+                                    .stream()
+                                    .pipeThrough(
+                                        new CompressionStream("deflate-raw"),
+                                    );
                             }
+
+                            writeUnidirectionalStream(
+                                {
+                                    messageId,
+                                    attachmentsCount: uploadQueue.length,
+                                },
+                                textStream,
+                            );
+
+                            for (let i = 0; i < uploadQueue.length; i++) {
+                                const file = uploadQueue[i];
+                                const meta = {
+                                    messageId,
+                                    attachmentsCount: uploadQueue.length,
+                                    attachmentIndex: i,
+                                    fileName: file.name,
+                                    fileType: file.type,
+                                };
+
+                                if (file.size > 524288000) {
+                                    if (file.handle) {
+                                        database
+                                            .transaction(
+                                                "fileHandlers",
+                                                "readwrite",
+                                            )
+                                            .objectStore("fileHandlers")
+                                            .put({
+                                                messageId: messageId.toString(),
+                                                attachmentIndex: i,
+                                                handle: file.handle,
+                                            });
+                                    }
+                                    writeUnidirectionalStream(meta, null);
+                                } else {
+                                    writeUnidirectionalStream(
+                                        meta,
+                                        file.stream(),
+                                    );
+                                }
+                            }
+
+                            const previewContainer =
+                                messagesElement.nextElementSibling;
+                            if (previewContainer?.className === "attachments")
+                                previewContainer.remove();
+
+                            messageInputElement.value = "";
+                            uploadQueue = [];
                         }
-
-                        const previewContainer =
-                            messagesElement.nextElementSibling;
-                        if (previewContainer?.className === "attachments")
-                            previewContainer.remove();
-
-                        messageInputElement.value = "";
-                        uploadQueue = [];
                     }
                 }
             };
 
             async function writeUnidirectionalStream(meta, dataStream) {
-                const stream = await webtransport.createUnidirectionalStream();
-                const writer = stream.getWriter();
-
-                const baseIv = crypto.getRandomValues(new Uint8Array(12));
-                const encoder = new TextEncoder();
-
-                let nameBytes = new Uint8Array(0);
-                let typeBytes = new Uint8Array(0);
-                let metaSize = 9;
-
-                if (meta.fileName !== undefined) {
-                    nameBytes = encoder.encode(meta.fileName);
-                    typeBytes = encoder.encode(meta.fileType);
-                    metaSize +=
-                        1 + 2 + nameBytes.byteLength + 2 + typeBytes.byteLength;
+                if (!webtransport || isReconnecting) {
+                    console.warn("Cannot send: disconnected from server");
+                    return;
                 }
 
-                const metaBuffer = new ArrayBuffer(metaSize);
-                const metaView = new DataView(metaBuffer);
-                const metaBytes = new Uint8Array(metaBuffer);
+                try {
+                    const stream =
+                        await webtransport.createUnidirectionalStream();
+                    const writer = stream.getWriter();
 
-                metaView.setBigUint64(0, meta.messageId, true);
-                metaView.setUint8(8, meta.attachmentsCount);
+                    const baseIv = crypto.getRandomValues(new Uint8Array(12));
+                    const encoder = new TextEncoder();
 
-                if (meta.fileName !== undefined) {
-                    metaView.setUint8(9, meta.attachmentIndex);
-                    metaView.setUint16(10, nameBytes.byteLength, true);
-                    metaBytes.set(nameBytes, 12);
-                    metaView.setUint16(
-                        12 + nameBytes.byteLength,
-                        typeBytes.byteLength,
+                    let nameBytes = new Uint8Array(0);
+                    let typeBytes = new Uint8Array(0);
+                    let metaSize = 9;
+
+                    if (meta.fileName !== undefined) {
+                        nameBytes = encoder.encode(meta.fileName);
+                        typeBytes = encoder.encode(meta.fileType);
+                        metaSize +=
+                            1 +
+                            2 +
+                            nameBytes.byteLength +
+                            2 +
+                            typeBytes.byteLength;
+                    }
+
+                    const metaBuffer = new ArrayBuffer(metaSize);
+                    const metaView = new DataView(metaBuffer);
+                    const metaBytes = new Uint8Array(metaBuffer);
+
+                    metaView.setBigUint64(0, meta.messageId, true);
+                    metaView.setUint8(8, meta.attachmentsCount);
+
+                    if (meta.fileName !== undefined) {
+                        metaView.setUint8(9, meta.attachmentIndex);
+                        metaView.setUint16(10, nameBytes.byteLength, true);
+                        metaBytes.set(nameBytes, 12);
+                        metaView.setUint16(
+                            12 + nameBytes.byteLength,
+                            typeBytes.byteLength,
+                            true,
+                        );
+                        metaBytes.set(typeBytes, 14 + nameBytes.byteLength);
+                    }
+
+                    const encMeta = await crypto.subtle.encrypt(
+                        { name: "AES-GCM", iv: baseIv },
+                        cryptoKey,
+                        metaBytes,
+                    );
+
+                    const ivAndLen = new Uint8Array(14);
+                    ivAndLen.set(baseIv, 0);
+                    new DataView(ivAndLen.buffer).setUint16(
+                        12,
+                        encMeta.byteLength,
                         true,
                     );
-                    metaBytes.set(typeBytes, 14 + nameBytes.byteLength);
-                }
 
-                const encMeta = await crypto.subtle.encrypt(
-                    { name: "AES-GCM", iv: baseIv },
-                    cryptoKey,
-                    metaBytes,
-                );
-                const ivAndLen = new Uint8Array(14);
-                ivAndLen.set(baseIv, 0);
-                new DataView(ivAndLen.buffer).setUint16(
-                    12,
-                    encMeta.byteLength,
-                    true,
-                );
+                    await writer.write(ivAndLen);
+                    await writer.write(new Uint8Array(encMeta));
 
-                await writer.write(ivAndLen);
-                await writer.write(new Uint8Array(encMeta));
+                    if (dataStream) {
+                        let chunkIndex = 0n;
+                        const CHUNK_SIZE = 1048576;
 
-                if (dataStream) {
-                    let chunkIndex = 0n;
-                    const CHUNK_SIZE = 1048576;
+                        const reader = dataStream.getReader();
+                        const buffer = new Uint8Array(CHUNK_SIZE);
+                        let bufferOffset = 0;
+                        let hasWritten = false;
 
-                    const reader = dataStream.getReader();
-                    const buffer = new Uint8Array(CHUNK_SIZE);
-                    let bufferOffset = 0;
-                    let hasWritten = false;
+                        try {
+                            while (true) {
+                                const { done, value } = await reader.read();
 
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) {
-                            if (bufferOffset > 0 || !hasWritten) {
-                                const chunkIv = getChunkIV(baseIv, chunkIndex);
-                                const encChunk = await crypto.subtle.encrypt(
-                                    { name: "AES-GCM", iv: chunkIv },
-                                    cryptoKey,
-                                    buffer.subarray(0, bufferOffset),
-                                );
-                                await writer.write(new Uint8Array(encChunk));
+                                if (value) {
+                                    let valueOffset = 0;
+                                    while (valueOffset < value.byteLength) {
+                                        const spaceLeft =
+                                            CHUNK_SIZE - bufferOffset;
+                                        const copyLen = Math.min(
+                                            spaceLeft,
+                                            value.byteLength - valueOffset,
+                                        );
+                                        buffer.set(
+                                            value.subarray(
+                                                valueOffset,
+                                                valueOffset + copyLen,
+                                            ),
+                                            bufferOffset,
+                                        );
+                                        bufferOffset += copyLen;
+                                        valueOffset += copyLen;
+
+                                        if (bufferOffset === CHUNK_SIZE) {
+                                            const chunkIv = getChunkIV(
+                                                baseIv,
+                                                chunkIndex,
+                                            );
+                                            const encChunk =
+                                                await crypto.subtle.encrypt(
+                                                    {
+                                                        name: "AES-GCM",
+                                                        iv: chunkIv,
+                                                    },
+                                                    cryptoKey,
+                                                    buffer,
+                                                );
+                                            await writer.write(
+                                                new Uint8Array(encChunk),
+                                            );
+                                            chunkIndex++;
+                                            bufferOffset = 0;
+                                            hasWritten = true;
+                                        }
+                                    }
+                                }
+
+                                if (done) {
+                                    if (bufferOffset > 0 || !hasWritten) {
+                                        const chunkIv = getChunkIV(
+                                            baseIv,
+                                            chunkIndex,
+                                        );
+                                        const encChunk =
+                                            await crypto.subtle.encrypt(
+                                                {
+                                                    name: "AES-GCM",
+                                                    iv: chunkIv,
+                                                },
+                                                cryptoKey,
+                                                buffer.subarray(
+                                                    0,
+                                                    bufferOffset,
+                                                ),
+                                            );
+                                        await writer.write(
+                                            new Uint8Array(encChunk),
+                                        );
+                                    }
+                                    break;
+                                }
                             }
-                            break;
-                        }
-
-                        let valueOffset = 0;
-                        while (valueOffset < value.byteLength) {
-                            const spaceLeft = CHUNK_SIZE - bufferOffset;
-                            const copyLen = Math.min(
-                                spaceLeft,
-                                value.byteLength - valueOffset,
-                            );
-                            buffer.set(
-                                value.subarray(
-                                    valueOffset,
-                                    valueOffset + copyLen,
-                                ),
-                                bufferOffset,
-                            );
-                            bufferOffset += copyLen;
-                            valueOffset += copyLen;
-
-                            if (bufferOffset === CHUNK_SIZE) {
-                                const chunkIv = getChunkIV(baseIv, chunkIndex);
-                                const encChunk = await crypto.subtle.encrypt(
-                                    { name: "AES-GCM", iv: chunkIv },
-                                    cryptoKey,
-                                    buffer,
-                                );
-                                await writer.write(new Uint8Array(encChunk));
-                                chunkIndex++;
-                                bufferOffset = 0;
-                                hasWritten = true;
-                            }
+                        } finally {
+                            reader.releaseLock();
                         }
                     }
+
+                    await writer.close();
+                } catch {
+                    try {
+                        if (dataStream) {
+                            await dataStream.cancel();
+                        }
+                    } catch {}
+                    handleDisconnect();
                 }
-                await writer.close();
             }
 
             async function readIncomingUnidirectionalStreams() {
@@ -1111,117 +1208,133 @@
                 fileHandle,
                 fileName,
             ) {
-                const stream = await webtransport.createBidirectionalStream();
+                if (!webtransport || isReconnecting) return;
 
-                const reqBuf = new ArrayBuffer(9);
-                const reqView = new DataView(reqBuf);
-                reqView.setBigUint64(0, messageId, true);
-                reqView.setUint8(8, attachmentIndex);
+                try {
+                    const stream =
+                        await webtransport.createBidirectionalStream();
 
-                const iv = crypto.getRandomValues(new Uint8Array(12));
-                const encReq = await crypto.subtle.encrypt(
-                    { name: "AES-GCM", iv },
-                    cryptoKey,
-                    reqBuf,
-                );
+                    const reqBuf = new ArrayBuffer(9);
+                    const reqView = new DataView(reqBuf);
+                    reqView.setBigUint64(0, messageId, true);
+                    reqView.setUint8(8, attachmentIndex);
 
-                const writer = stream.writable.getWriter();
-                const ivAndLen = new Uint8Array(14);
-                ivAndLen.set(iv, 0);
-                new DataView(ivAndLen.buffer).setUint16(
-                    12,
-                    encReq.byteLength,
-                    true,
-                );
+                    const iv = crypto.getRandomValues(new Uint8Array(12));
+                    const encReq = await crypto.subtle.encrypt(
+                        { name: "AES-GCM", iv },
+                        cryptoKey,
+                        reqBuf,
+                    );
 
-                await writer.write(ivAndLen);
-                await writer.write(new Uint8Array(encReq));
-                await writer.close();
+                    const writer = stream.writable.getWriter();
+                    const ivAndLen = new Uint8Array(14);
+                    ivAndLen.set(iv, 0);
+                    new DataView(ivAndLen.buffer).setUint16(
+                        12,
+                        encReq.byteLength,
+                        true,
+                    );
 
-                let fileWriter = null;
-                let memoryChunks = [];
+                    await writer.write(ivAndLen);
+                    await writer.write(new Uint8Array(encReq));
+                    await writer.close();
 
-                if (fileHandle) {
-                    fileWriter = await fileHandle.createWritable();
-                }
+                    let fileWriter = null;
+                    let memoryChunks = [];
 
-                const reader = stream.readable.getReader();
-                let leftover = new Uint8Array(0);
-
-                async function readExact(length) {
-                    const buffer = new Uint8Array(length);
-                    let bytesRead = 0;
-                    if (leftover.byteLength > 0) {
-                        const copyLen = Math.min(leftover.byteLength, length);
-                        buffer.set(leftover.subarray(0, copyLen), 0);
-                        bytesRead += copyLen;
-                        leftover = leftover.subarray(copyLen);
+                    if (fileHandle) {
+                        fileWriter = await fileHandle.createWritable();
                     }
-                    while (bytesRead < length) {
-                        const { value, done } = await reader.read();
-                        if (done)
-                            return bytesRead === 0
-                                ? null
-                                : buffer.subarray(0, bytesRead);
-                        const spaceLeft = length - bytesRead;
-                        if (value.byteLength <= spaceLeft) {
-                            buffer.set(value, bytesRead);
-                            bytesRead += value.byteLength;
-                        } else {
-                            buffer.set(value.subarray(0, spaceLeft), bytesRead);
-                            bytesRead += spaceLeft;
-                            leftover = value.subarray(spaceLeft);
-                        }
-                    }
-                    return buffer;
-                }
 
-                const baseIvBuffer = await readExact(12);
-                if (!baseIvBuffer) {
-                    if (fileWriter) await fileWriter.close();
-                    return;
-                }
+                    const reader = stream.readable.getReader();
+                    let leftover = new Uint8Array(0);
 
-                let chunkIndex = 0n;
-                const CHUNK_SIZE = 1048592;
-
-                while (true) {
-                    const encChunk = await readExact(CHUNK_SIZE);
-                    if (!encChunk) break;
-                    try {
-                        const decChunkBuffer = await crypto.subtle.decrypt(
-                            {
-                                name: "AES-GCM",
-                                iv: getChunkIV(baseIvBuffer, chunkIndex),
-                            },
-                            cryptoKey,
-                            encChunk,
-                        );
-
-                        if (fileWriter) {
-                            await fileWriter.write(
-                                new Uint8Array(decChunkBuffer),
+                    async function readExact(length) {
+                        const buffer = new Uint8Array(length);
+                        let bytesRead = 0;
+                        if (leftover.byteLength > 0) {
+                            const copyLen = Math.min(
+                                leftover.byteLength,
+                                length,
                             );
-                        } else {
-                            memoryChunks.push(new Uint8Array(decChunkBuffer));
+                            buffer.set(leftover.subarray(0, copyLen), 0);
+                            bytesRead += copyLen;
+                            leftover = leftover.subarray(copyLen);
                         }
-                    } catch {
-                        break;
+                        while (bytesRead < length) {
+                            const { value, done } = await reader.read();
+                            if (done)
+                                return bytesRead === 0
+                                    ? null
+                                    : buffer.subarray(0, bytesRead);
+                            const spaceLeft = length - bytesRead;
+                            if (value.byteLength <= spaceLeft) {
+                                buffer.set(value, bytesRead);
+                                bytesRead += value.byteLength;
+                            } else {
+                                buffer.set(
+                                    value.subarray(0, spaceLeft),
+                                    bytesRead,
+                                );
+                                bytesRead += spaceLeft;
+                                leftover = value.subarray(spaceLeft);
+                            }
+                        }
+                        return buffer;
                     }
-                    if (encChunk.byteLength < CHUNK_SIZE) break;
-                    chunkIndex++;
-                }
 
-                if (fileWriter) {
-                    await fileWriter.close();
-                } else if (memoryChunks.length > 0) {
-                    const blob = new Blob(memoryChunks);
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = fileName || "downloaded_file";
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    const baseIvBuffer = await readExact(12);
+                    if (!baseIvBuffer) {
+                        if (fileWriter) await fileWriter.close();
+                        return;
+                    }
+
+                    let chunkIndex = 0n;
+                    const CHUNK_SIZE = 1048592;
+
+                    while (true) {
+                        const encChunk = await readExact(CHUNK_SIZE);
+                        if (!encChunk) break;
+                        try {
+                            const decChunkBuffer = await crypto.subtle.decrypt(
+                                {
+                                    name: "AES-GCM",
+                                    iv: getChunkIV(baseIvBuffer, chunkIndex),
+                                },
+                                cryptoKey,
+                                encChunk,
+                            );
+
+                            if (fileWriter) {
+                                await fileWriter.write(
+                                    new Uint8Array(decChunkBuffer),
+                                );
+                            } else {
+                                memoryChunks.push(
+                                    new Uint8Array(decChunkBuffer),
+                                );
+                            }
+                        } catch {
+                            break;
+                        }
+                        if (encChunk.byteLength < CHUNK_SIZE) break;
+                        chunkIndex++;
+                    }
+
+                    if (fileWriter) {
+                        await fileWriter.close();
+                    } else if (memoryChunks.length > 0) {
+                        const blob = new Blob(memoryChunks);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = fileName || "downloaded_file";
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }
+                } catch (err) {
+                    console.error("Failed bidi stream:", err);
+                    handleDisconnect();
                 }
             }
 
